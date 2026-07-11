@@ -1,0 +1,33 @@
+name: safefam
+description: 세이프팸 — 온 가족 금융사기 지킴이 (UI 스캐폴드)
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+  flutter: '>=3.19.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/character.png
+
+  # Pretendard를 쓰려면 폰트 파일을 assets/fonts/ 에 넣고 아래 주석을 해제하세요.
+  # https://github.com/orioncactus/pretendard 에서 Pretendard-Regular/SemiBold/Bold.otf 다운로드
+  # fonts:
+  #   - family: Pretendard
+  #     fonts:
+  #       - asset: assets/fonts/Pretendard-Regular.otf
+  #         weight: 400
+  #       - asset: assets/fonts/Pretendard-SemiBold.otf
+  #         weight: 600
+  #       - asset: assets/fonts/Pretendard-Bold.otf
+  #         weight: 700
