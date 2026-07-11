@@ -4,6 +4,8 @@ import '../widgets/common.dart';
 import 'results.dart';
 import 'family_flow.dart';
 import 'mypage_screen.dart';
+import 'login_screen.dart';
+import '../services/auth_api.dart';
 
 /// 더보기(설정) — 홈 톱니바퀴로 진입(pushed). 하단 탭 없음.
 class MoreScreen extends StatefulWidget {
@@ -40,6 +42,28 @@ class _MoreScreenState extends State<MoreScreen> {
             inactiveTrackColor: AppColors.toggleOff,
             onChanged: on),
       ]);
+
+  Future<void> _logout(BuildContext context) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('로그아웃', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+        content: const Text('정말 로그아웃할까요?', style: TextStyle(fontSize: 15)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('취소')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('로그아웃', style: TextStyle(color: AppColors.high))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await AuthApi.logout();
+    if (context.mounted) {
+      Navigator.pushAndRemoveUntil(
+          context, MaterialPageRoute(builder: (_) => const LoginScreen()), (r) => false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -91,7 +115,7 @@ class _MoreScreenState extends State<MoreScreen> {
                   onTap: () => Navigator.push(context,
                       MaterialPageRoute(builder: (_) => const MyPageScreen()))),
               const Divider(color: AppColors.line, height: 1),
-              _link(Icons.logout, '로그아웃'),
+              _link(Icons.logout, '로그아웃', onTap: () => _logout(context)),
             ]),
           ),
           const SizedBox(height: 16),
