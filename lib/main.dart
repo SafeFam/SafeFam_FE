@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'theme/app_theme.dart';
-import 'widgets/main_scaffold.dart';
+import 'screens/login_screen.dart';
 
 void main() => runApp(const SafeFamApp());
 
@@ -13,7 +13,7 @@ class SafeFamApp extends StatelessWidget {
       title: '세이프팸',
       debugShowCheckedModeBanner: false,
       theme: buildSafeFamTheme(),
-      home: const MainScaffold(),
+      home: const LoginScreen(),
     );
   }
 }
