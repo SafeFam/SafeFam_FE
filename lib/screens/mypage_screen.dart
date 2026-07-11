@@ -45,6 +45,16 @@ class MyPageScreen extends StatelessWidget {
       body: FutureBuilder<UserProfile>(
         future: AuthApi.myProfile(),
         builder: (context, snap) {
+          if (snap.hasError) {
+            return const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Text('정보를 불러오지 못했어요. 잠시 후 다시 시도해 주세요',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 16, color: AppColors.t2)),
+              ),
+            );
+          }
           if (!snap.hasData) {
             return const Center(child: CircularProgressIndicator(color: AppColors.blue));
           }
@@ -80,9 +90,11 @@ class MyPageScreen extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Column(
                   children: [
-                    _link(Icons.description_outlined, '이용약관'),
+                    _link(Icons.description_outlined, '이용약관',
+                        onTap: () => _showDoc(context, '이용약관')),
                     const Divider(color: AppColors.line, height: 1),
-                    _link(Icons.shield_outlined, '개인정보처리방침'),
+                    _link(Icons.shield_outlined, '개인정보처리방침',
+                        onTap: () => _showDoc(context, '개인정보처리방침')),
                   ],
                 ),
               ),
@@ -104,15 +116,24 @@ class MyPageScreen extends StatelessWidget {
         ],
       );
 
-  Widget _link(IconData icon, String label) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 15),
-        child: Row(
-          children: [
-            Icon(icon, color: AppColors.t2, size: 22),
-            const SizedBox(width: 13),
-            Expanded(child: Text(label, style: const TextStyle(fontSize: 16))),
-            const Icon(Icons.chevron_right, color: AppColors.t3),
-          ],
+  void _showDoc(BuildContext context, String title) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text('$title 화면은 준비 중이에요')));
+  }
+
+  Widget _link(IconData icon, String label, {VoidCallback? onTap}) => InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 15),
+          child: Row(
+            children: [
+              Icon(icon, color: AppColors.t2, size: 22),
+              const SizedBox(width: 13),
+              Expanded(child: Text(label, style: const TextStyle(fontSize: 16))),
+              const Icon(Icons.chevron_right, color: AppColors.t3),
+            ],
+          ),
         ),
       );
 }
