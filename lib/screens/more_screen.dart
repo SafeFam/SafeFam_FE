@@ -3,6 +3,7 @@ import '../theme/app_theme.dart';
 import '../widgets/common.dart';
 import 'results.dart';
 import 'family_flow.dart';
+import 'mypage_screen.dart';
 
 /// 더보기(설정) — 홈 톱니바퀴로 진입(pushed). 하단 탭 없음.
 class MoreScreen extends StatefulWidget {
@@ -86,7 +87,9 @@ class _MoreScreenState extends State<MoreScreen> {
           SfCard(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Column(children: [
-              _link(Icons.manage_accounts_outlined, '내 정보'),
+              _link(Icons.manage_accounts_outlined, '내 정보',
+                  onTap: () => Navigator.push(context,
+                      MaterialPageRoute(builder: (_) => const MyPageScreen()))),
               const Divider(color: AppColors.line, height: 1),
               _link(Icons.logout, '로그아웃'),
             ]),
