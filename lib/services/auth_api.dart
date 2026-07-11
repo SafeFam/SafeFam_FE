@@ -49,6 +49,7 @@ class AuthApi {
     await Future.delayed(const Duration(milliseconds: 500));
     // TODO(3단계): 소셜 SDK 토큰 → 서버 검증 → 우리 토큰 발급
     accessToken = 'dummy_access';
+    refreshToken = 'dummy_refresh';
     return const AuthResult(success: true, isNewUser: true);
   }
 
