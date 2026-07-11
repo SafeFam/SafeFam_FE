@@ -43,6 +43,8 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _loading = true);
     try {
       await action();
+    } catch (_) {
+      _toast('문제가 발생했어요. 잠시 후 다시 시도해 주세요');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -60,6 +62,8 @@ class _LoginScreenState extends State<LoginScreen> {
           final ok = await AuthApi.requestCode(_phone.text);
           if (ok && mounted) setState(() => _requested = true);
         } else {
+          // TODO(3단계): 백엔드가 신규/기존 회원을 구분하면 기존 회원은
+          // 닉네임·비밀번호 없이 진행하도록 분기. 현재는 가입 기준 필수 검증.
           if (_nickname.text.trim().isEmpty) {
             _toast('닉네임을 입력해 주세요');
             return;
@@ -78,8 +82,14 @@ class _LoginScreenState extends State<LoginScreen> {
         }
       });
 
-  Future<void> _social(String provider) =>
-      _run(() async => _goNext(await AuthApi.socialLogin(provider)));
+  Future<void> _social(String provider) => _run(() async {
+        final r = await AuthApi.socialLogin(provider);
+        if (r.success) {
+          _goNext(r);
+        } else {
+          _toast('로그인에 실패했어요. 다시 시도해 주세요');
+        }
+      });
 
   @override
   Widget build(BuildContext context) {
@@ -107,7 +117,12 @@ class _LoginScreenState extends State<LoginScreen> {
                       children: [
                         const Text('인증번호', style: AppText.section),
                         GestureDetector(
-                          onTap: () => AuthApi.requestCode(_phone.text),
+                          onTap: _loading
+                              ? null
+                              : () => _run(() async {
+                                    final ok = await AuthApi.requestCode(_phone.text);
+                                    if (ok) _toast('인증번호를 다시 보냈어요');
+                                  }),
                           child: const Text('재요청', style: TextStyle(fontSize: 13, color: AppColors.t3)),
                         ),
                       ],
