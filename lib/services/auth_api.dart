@@ -44,7 +44,7 @@ class AuthApi {
 
   /// 회원가입. 휴대폰 인증 완료 후 이름(닉네임)·비밀번호로 계정 생성.
   /// 백엔드는 201만 반환(토큰 없음) → 가입 후 [login]으로 토큰을 발급받는다.
-  /// 비밀번호 정책: 영문+숫자 포함, 특수문자 없음, 8자 이상.
+  /// 비밀번호 정책: 영문+숫자 포함, 특수문자 없음, 8~64자.
   static Future<bool> signup({
     required String phone,
     required String name,

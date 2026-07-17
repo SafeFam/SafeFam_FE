@@ -97,7 +97,9 @@ class _SignupScreenState extends State<SignupScreen> {
         final r = await AuthApi.login(
             phone: _phone.text.trim(), password: _password.text);
         if (!r.success) {
-          _toast('가입은 됐어요. 로그인 화면에서 다시 로그인해 주세요');
+          // 계정은 생성됨 → 회원가입 폼에 두면 재시도 시 중복가입. 로그인 화면으로 복귀.
+          _toast('가입은 됐어요. 로그인 화면에서 로그인해 주세요');
+          if (mounted) Navigator.pop(context);
           return;
         }
         if (mounted) {
@@ -109,9 +111,11 @@ class _SignupScreenState extends State<SignupScreen> {
         }
       });
 
-  /// 비밀번호 정책: 영문+숫자 포함, 특수문자 없음, 8자 이상.
+  /// 비밀번호 정책: 영문+숫자 포함, 특수문자 없음, 8~64자.
   String? _passwordError(String pw) {
-    if (pw.length < 8) return '비밀번호는 8자 이상이어야 해요';
+    if (pw.length < 8 || pw.length > 64) {
+      return '비밀번호는 8자 이상 64자 이하여야 해요';
+    }
     if (!RegExp(r'^[A-Za-z0-9]+$').hasMatch(pw)) {
       return '비밀번호는 영문과 숫자만 사용할 수 있어요';
     }
