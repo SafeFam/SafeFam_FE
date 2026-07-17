@@ -20,7 +20,7 @@
 ## 서버 연동
 - **baseUrl**: 기본값 `http://10.0.2.2:8080` (Android 에뮬레이터에서 호스트 PC의 localhost). 실기기/배포는 빌드 시 주입:
   `flutter run --dart-define=SAFEFAM_API_BASE_URL=https://<도메인>`
-- 인증 계약: 공통 응답 `ApiResponse{status,message,data}`, 토큰은 바디(`TokenResponse`), 인증 요청은 `Authorization: Bearer`.
+- 인증 계약: 공통 응답 `ApiResponse{status,message,data}`, 토큰은 바디(`TokenResponse`). 인증이 필요한(보호된) API 요청에만 `Authorization: Bearer <accessToken>`을 붙임 — 가입·로그인처럼 토큰 없는 요청엔 미적용.
 - 개발용 http 평문 통신은 **디버그 빌드에만** 허용(`android/app/src/debug` network security config). 릴리스는 https 강제.
 
 ## 구조
