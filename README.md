@@ -1,6 +1,6 @@
 # 세이프팸 (SafeFam) — Flutter UI 스캐폴드
 
-온 가족 금융사기 지킴이 앱. 피그마 최종 시안을 Flutter로 옮긴 UI 껍데기 (Pixel 7 / Flutter 3.44 기준). 백엔드·API·권한은 미연결.
+온 가족 금융사기 지킴이 앱. 피그마 최종 시안을 Flutter로 옮긴 앱 (Pixel 7 / Flutter 3.44 기준). **인증 API(회원가입·로그인·로그아웃)는 백엔드와 http 연동 완료**. 문자 분석·권한·오버레이는 미연결.
 
 ## 흐름
 (스플래시 → 온보딩) → **로그인**(휴대폰 번호 + 비밀번호 · 카카오 · 구글) → 신규는 **회원가입**(휴대폰 인증 요청→확인 → 닉네임 + 비밀번호) → **가족 등록**(보호자/피보호자) → 보호자는 초대 코드 발급 → 연결 후 이름 설정 / 피보호자는 코드 입력 → 메인.
@@ -16,6 +16,12 @@
 3. 폴더에서 `flutter create .` → `flutter pub get`
 4. Pixel 7 에뮬레이터 → Run
 > 폰트: 기본 시스템 폰트로 동작. Pretendard는 `assets/fonts/`에 넣고 pubspec 주석 해제.
+
+## 서버 연동
+- **baseUrl**: 기본값 `http://10.0.2.2:8080` (Android 에뮬레이터에서 호스트 PC의 localhost). 실기기/배포는 빌드 시 주입:
+  `flutter run --dart-define=SAFEFAM_API_BASE_URL=https://<도메인>`
+- 인증 계약: 공통 응답 `ApiResponse{status,message,data}`, 토큰은 바디(`TokenResponse`). 인증이 필요한(보호된) API 요청에만 `Authorization: Bearer <accessToken>`을 붙임 — 가입·로그인처럼 토큰 없는 요청엔 미적용.
+- 개발용 http 평문 통신은 **디버그 빌드에만** 허용(`android/app/src/debug` network security config). 릴리스는 https 강제.
 
 ## 구조
 ```
@@ -34,12 +40,14 @@ lib/
     results.dart       결과(NB 신호)·보이스피싱·URL
     overlay_alert.dart 강제 오버레이 경고
     history_screen.dart / family_screen.dart / more_screen.dart(설정)
-  services/auth_api.dart  인증 API 껍데기(login/signup/verify 분리)
+  services/auth_api.dart  인증 API — 백엔드 http 연동(가입·로그인·로그아웃). 마이페이지는 users/me 501로 껍데기
   sheets.dart          챗봇·신고·공유
 assets/character.png
 ```
 
 ## 다음 (기능 연결)
+- ✅ 인증 API(가입·로그인·로그아웃) http 연동 완료 — 로그인 E2E 검증됨
+- 마이페이지(`users/me`)·회원가입 SMS 발송은 백엔드 구현 대기
 - 결과를 NB 응답(핸드오프 v2 4-1: score·signals·maskedContent)에 바인딩
 - 전화(`url_launcher`)·공유(`share_plus`)
 - 권한·오버레이 실제 구현(검증 후) · FCM · 상태관리(Provider/Riverpod)
