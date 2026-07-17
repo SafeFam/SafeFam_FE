@@ -80,6 +80,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
         }
         final ok = await AuthApi.resetPassword(
           phone: _phone.text.trim(),
+          code: _code.text.trim(),
           newPassword: _password.text,
         );
         if (!ok) {

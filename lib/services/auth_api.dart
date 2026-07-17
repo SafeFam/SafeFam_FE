@@ -93,16 +93,23 @@ class AuthApi {
   }
 
   /// 비밀번호 재설정. 휴대폰 인증(요청→검증) 완료 후 새 비밀번호로 변경.
-  /// (인증번호 발송·검증은 requestCode/verifyCode 재사용)
+  /// 인증번호 발송·검증은 requestCode/verifyCode 재사용.
+  /// 보안: 재설정 요청에 인증번호(code)를 함께 보내, 백엔드가 OTP 소유를
+  /// 검증·소비하는 것과 비밀번호 변경을 원자적으로 처리하게 한다.
+  /// (phone+newPassword만으로는 인증 없이 재설정될 수 있어 code 필수)
   static Future<bool> resetPassword({
     required String phone,
+    required String code,
     required String newPassword,
   }) async {
     final res = await http
         .post(_uri('/api/v1/auth/password/reset'),
             headers: _headers(),
-            body:
-                jsonEncode({'phoneNumber': phone, 'newPassword': newPassword}))
+            body: jsonEncode({
+              'phoneNumber': phone,
+              'code': code,
+              'newPassword': newPassword,
+            }))
         .timeout(_timeout);
     return _isSuccess(res);
   }
