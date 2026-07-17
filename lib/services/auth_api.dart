@@ -92,6 +92,43 @@ class AuthApi {
     return _isSuccess(res);
   }
 
+  /// 비밀번호 재설정. 휴대폰 인증(요청→검증) 완료 후 새 비밀번호로 변경.
+  /// 인증번호 발송·검증은 requestCode/verifyCode 재사용.
+  /// 보안: 재설정 요청에 인증번호(code)를 함께 보내, 백엔드가 OTP 소유를
+  /// 검증·소비하는 것과 비밀번호 변경을 원자적으로 처리하게 한다.
+  /// (phone+newPassword만으로는 인증 없이 재설정될 수 있어 code 필수)
+  static Future<bool> resetPassword({
+    required String phone,
+    required String code,
+    required String newPassword,
+  }) async {
+    final res = await http
+        .post(_uri('/api/v1/auth/password/reset'),
+            headers: _headers(),
+            body: jsonEncode({
+              'phoneNumber': phone,
+              'code': code,
+              'newPassword': newPassword,
+            }))
+        .timeout(_timeout);
+    return _isSuccess(res);
+  }
+
+  /// 비밀번호 정책(가입·재설정 공통): 영문+숫자 포함, 특수문자 없음, 8~64자.
+  /// 통과하면 null, 위반하면 안내 메시지를 반환한다.
+  static String? passwordError(String pw) {
+    if (pw.length < 8 || pw.length > 64) {
+      return '비밀번호는 8자 이상 64자 이하여야 해요';
+    }
+    if (!RegExp(r'^[A-Za-z0-9]+$').hasMatch(pw)) {
+      return '비밀번호는 영문과 숫자만 사용할 수 있어요';
+    }
+    if (!RegExp(r'[A-Za-z]').hasMatch(pw) || !RegExp(r'[0-9]').hasMatch(pw)) {
+      return '비밀번호는 영문과 숫자를 모두 포함해야 해요';
+    }
+    return null;
+  }
+
   /// 로그인. 휴대폰 번호 + 비밀번호. 성공 시 토큰 저장.
   static Future<AuthResult> login({
     required String phone,
