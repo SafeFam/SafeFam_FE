@@ -31,7 +31,7 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!mounted) return;
     final next = r.isNewUser
         ? const FamilyRegisterScreen() // 신규 → 가족 등록
-        : const MainScaffold();        // 기존 → 홈
+        : const MainScaffold(); // 기존 → 홈
     Navigator.pushAndRemoveUntil(
         context, MaterialPageRoute(builder: (_) => next), (route) => false);
   }
@@ -63,7 +63,8 @@ class _LoginScreenState extends State<LoginScreen> {
           _toast('비밀번호를 입력해 주세요');
           return;
         }
-        final r = await AuthApi.login(phone: _phone.text.trim(), password: _password.text);
+        final r = await AuthApi.login(
+            phone: _phone.text.trim(), password: _password.text);
         if (r.success) {
           _goNext(r);
         } else {
@@ -81,7 +82,8 @@ class _LoginScreenState extends State<LoginScreen> {
       });
 
   void _goSignup() {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => const SignupScreen()));
+    Navigator.push(
+        context, MaterialPageRoute(builder: (_) => const SignupScreen()));
   }
 
   @override
@@ -90,43 +92,56 @@ class _LoginScreenState extends State<LoginScreen> {
       body: SafeArea(
         child: Stack(
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 10, 18, 18),
-              child: Column(
-                children: [
-                  const SizedBox(height: 48),
-                  const CharacterDisc(100),
-                  const SizedBox(height: 14),
-                  const Text('로그인', style: AppText.titleResult),
-                  const SizedBox(height: 6),
-                  const Text('휴대폰 번호로 로그인하세요', style: AppText.caption),
-                  const SizedBox(height: 22),
-                  _label('휴대전화 번호'),
-                  _field(_phone, '010-0000-0000', TextInputType.phone),
-                  const SizedBox(height: 12),
-                  _label('비밀번호'),
-                  _field(_password, '비밀번호 입력', TextInputType.visiblePassword,
-                      obscure: _obscure,
-                      toggleObscure: () => setState(() => _obscure = !_obscure)),
-                  const SizedBox(height: 18),
-                  SfButton('로그인', onTap: _loading ? null : _login),
-                  const SizedBox(height: 10),
-                  SfButton('회원가입',
-                      variant: SfBtn.ghost, onTap: _loading ? null : _goSignup),
-                  const Spacer(),
-                  _kakao(),
-                  const SizedBox(height: 12),
-                  SfButton('구글로 계속하기',
-                      icon: Icons.g_mobiledata,
-                      variant: SfBtn.ghost,
-                      onTap: _loading ? null : () => _social('google')),
-                ],
+            LayoutBuilder(
+              builder: (context, constraints) => SingleChildScrollView(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                  child: IntrinsicHeight(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(18, 10, 18, 18),
+                      child: Column(
+                        children: [
+                          const SizedBox(height: 48),
+                          const CharacterDisc(100),
+                          const SizedBox(height: 14),
+                          const Text('로그인', style: AppText.titleResult),
+                          const SizedBox(height: 6),
+                          const Text('휴대폰 번호로 로그인하세요', style: AppText.caption),
+                          const SizedBox(height: 22),
+                          _label('휴대전화 번호'),
+                          _field(_phone, '010-0000-0000', TextInputType.phone),
+                          const SizedBox(height: 12),
+                          _label('비밀번호'),
+                          _field(_password, '비밀번호 입력',
+                              TextInputType.visiblePassword,
+                              obscure: _obscure,
+                              toggleObscure: () =>
+                                  setState(() => _obscure = !_obscure)),
+                          const SizedBox(height: 18),
+                          SfButton('로그인', onTap: _loading ? null : _login),
+                          const SizedBox(height: 10),
+                          SfButton('회원가입',
+                              variant: SfBtn.ghost,
+                              onTap: _loading ? null : _goSignup),
+                          const Spacer(),
+                          _kakao(),
+                          const SizedBox(height: 12),
+                          SfButton('구글로 계속하기',
+                              icon: Icons.g_mobiledata,
+                              variant: SfBtn.ghost,
+                              onTap: _loading ? null : () => _social('google')),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ),
             if (_loading)
               Container(
                 color: Colors.black.withOpacity(0.05),
-                child: const Center(child: CircularProgressIndicator(color: AppColors.blue)),
+                child: const Center(
+                    child: CircularProgressIndicator(color: AppColors.blue)),
               ),
           ],
         ),
@@ -136,7 +151,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Widget _label(String t) => Align(
         alignment: Alignment.centerLeft,
-        child: Padding(padding: const EdgeInsets.only(bottom: 6), child: Text(t, style: AppText.section)),
+        child: Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Text(t, style: AppText.section)),
       );
 
   Widget _field(TextEditingController c, String hint, TextInputType type,
@@ -156,7 +173,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     color: AppColors.t3, size: 22),
                 onPressed: toggleObscure,
               ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
         enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(13),
             borderSide: const BorderSide(color: AppColors.line, width: 1.5)),
@@ -181,7 +199,10 @@ class _LoginScreenState extends State<LoginScreen> {
                 Icon(Icons.chat_bubble, size: 20, color: Color(0xFF3B1E1E)),
                 SizedBox(width: 8),
                 Text('카카오로 계속하기',
-                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xFF3B1E1E))),
+                    style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF3B1E1E))),
               ],
             ),
           ),

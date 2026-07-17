@@ -54,7 +54,11 @@ class _SignupScreenState extends State<SignupScreen> {
           return;
         }
         final ok = await AuthApi.requestCode(_phone.text.trim());
-        if (ok && mounted) {
+        if (!ok) {
+          _toast('인증번호 발송에 실패했어요. 잠시 후 다시 시도해 주세요');
+          return;
+        }
+        if (mounted) {
           setState(() => _requested = true);
           _toast('인증번호를 보냈어요');
         }
@@ -65,7 +69,8 @@ class _SignupScreenState extends State<SignupScreen> {
           _toast('인증번호를 입력해 주세요');
           return;
         }
-        final verified = await AuthApi.verifyCode(_phone.text.trim(), _code.text.trim());
+        final verified =
+            await AuthApi.verifyCode(_phone.text.trim(), _code.text.trim());
         if (!verified) {
           _toast('인증번호가 올바르지 않아요');
           return;
@@ -83,7 +88,11 @@ class _SignupScreenState extends State<SignupScreen> {
           nickname: _nickname.text.trim(),
           password: _password.text,
         );
-        if (r.success && mounted) {
+        if (!r.success) {
+          _toast('가입에 실패했어요. 잠시 후 다시 시도해 주세요');
+          return;
+        }
+        if (mounted) {
           // 가입 완료 → 신규 회원이므로 가족 등록으로
           Navigator.pushAndRemoveUntil(
               context,
@@ -132,7 +141,7 @@ class _SignupScreenState extends State<SignupScreen> {
                   ],
                 ),
                 const SizedBox(height: 6),
-                _field(_code, '인증번호 입력', TextInputType.number, trailing: '2:48'),
+                _field(_code, '인증번호 입력', TextInputType.number),
                 const SizedBox(height: 12),
                 _label('닉네임'),
                 _field(_nickname, '가족에게 보일 이름', TextInputType.text),
@@ -149,7 +158,8 @@ class _SignupScreenState extends State<SignupScreen> {
           if (_loading)
             Container(
               color: Colors.black.withOpacity(0.05),
-              child: const Center(child: CircularProgressIndicator(color: AppColors.blue)),
+              child: const Center(
+                  child: CircularProgressIndicator(color: AppColors.blue)),
             ),
         ],
       ),
@@ -158,7 +168,9 @@ class _SignupScreenState extends State<SignupScreen> {
 
   Widget _label(String t) => Align(
         alignment: Alignment.centerLeft,
-        child: Padding(padding: const EdgeInsets.only(bottom: 6), child: Text(t, style: AppText.section)),
+        child: Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Text(t, style: AppText.section)),
       );
 
   Widget _field(TextEditingController c, String hint, TextInputType type,
@@ -172,7 +184,8 @@ class _SignupScreenState extends State<SignupScreen> {
         hintText: hint,
         hintStyle: const TextStyle(color: AppColors.t3),
         suffixText: trailing,
-        suffixStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.blue),
+        suffixStyle: const TextStyle(
+            fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.blue),
         suffixIcon: toggleObscure == null
             ? null
             : IconButton(
@@ -180,7 +193,8 @@ class _SignupScreenState extends State<SignupScreen> {
                     color: AppColors.t3, size: 22),
                 onPressed: toggleObscure,
               ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
         enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(13),
             borderSide: const BorderSide(color: AppColors.line, width: 1.5)),
