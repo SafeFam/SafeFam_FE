@@ -3,7 +3,8 @@
 온 가족 금융사기 지킴이 앱. 피그마 최종 시안을 Flutter로 옮긴 UI 껍데기 (Pixel 7 / Flutter 3.44 기준). 백엔드·API·권한은 미연결.
 
 ## 흐름
-스플래시 → 온보딩(권한 3장) → **소셜 로그인**(카카오·구글·휴대폰) → 휴대폰 인증(타이머·재요청) 또는 소셜 → **가족 등록**(보호자/피보호자) → 보호자는 초대 코드 발급 → 연결 후 이름 설정 / 피보호자는 코드 입력 → 메인.
+(스플래시 → 온보딩) → **로그인**(휴대폰 번호 + 비밀번호 · 카카오 · 구글) → 신규는 **회원가입**(휴대폰 인증 요청→확인 → 닉네임 + 비밀번호) → **가족 등록**(보호자/피보호자) → 보호자는 초대 코드 발급 → 연결 후 이름 설정 / 피보호자는 코드 입력 → 메인.
+> 진입점은 현재 `LoginScreen`. 스플래시·온보딩은 아직 앞단에 연결 전(별도 작업 예정).
 
 메인 하단 탭 **홈 · 이력 · 가족 · 검사** (설정=더보기는 홈 우상단 톱니바퀴로 진입).
 검사 탭 → 결과(NB 신호 기반). 결과 → 대응 챗봇 시트 → 신고 시트 / 전화 / 공유.
@@ -24,7 +25,8 @@ lib/
   screens/
     auth.dart          스플래시
     onboarding.dart    온보딩·권한
-    login_screen.dart  로그인(휴대폰+닉네임+비밀번호 · 카카오 · 구글)
+    login_screen.dart  로그인(휴대폰+비밀번호 · 회원가입 버튼 · 카카오 · 구글)
+    signup_screen.dart 회원가입(휴대폰 인증 → 닉네임+비밀번호)
     mypage_screen.dart 마이페이지(내 정보·로그아웃)
     family_flow.dart   가족 등록 · 초대코드 · 연결 · 이름 설정
     home_screen.dart   홈(톱니→설정)
@@ -32,7 +34,7 @@ lib/
     results.dart       결과(NB 신호)·보이스피싱·URL
     overlay_alert.dart 강제 오버레이 경고
     history_screen.dart / family_screen.dart / more_screen.dart(설정)
-  services/auth_api.dart  인증 API(껍데기)
+  services/auth_api.dart  인증 API 껍데기(login/signup/verify 분리)
   sheets.dart          챗봇·신고·공유
 assets/character.png
 ```
