@@ -79,27 +79,47 @@ class _SignupScreenState extends State<SignupScreen> {
           _toast('닉네임을 입력해 주세요');
           return;
         }
-        if (_password.text.length < 4) {
-          _toast('비밀번호는 4자 이상 입력해 주세요');
+        final pwError = _passwordError(_password.text);
+        if (pwError != null) {
+          _toast(pwError);
           return;
         }
-        final r = await AuthApi.signup(
+        final created = await AuthApi.signup(
           phone: _phone.text.trim(),
-          nickname: _nickname.text.trim(),
+          name: _nickname.text.trim(),
           password: _password.text,
         );
-        if (!r.success) {
+        if (!created) {
           _toast('가입에 실패했어요. 잠시 후 다시 시도해 주세요');
           return;
         }
+        // 백엔드 회원가입은 토큰을 주지 않으므로, 이어서 로그인해 토큰을 발급받는다.
+        final r = await AuthApi.login(
+            phone: _phone.text.trim(), password: _password.text);
+        if (!r.success) {
+          _toast('가입은 됐어요. 로그인 화면에서 다시 로그인해 주세요');
+          return;
+        }
         if (mounted) {
-          // 가입 완료 → 신규 회원이므로 가족 등록으로
+          // 가입 흐름 = 신규 회원 → 가족 등록으로
           Navigator.pushAndRemoveUntil(
               context,
               MaterialPageRoute(builder: (_) => const FamilyRegisterScreen()),
               (route) => false);
         }
       });
+
+  /// 비밀번호 정책: 영문+숫자 포함, 특수문자 없음, 8자 이상.
+  String? _passwordError(String pw) {
+    if (pw.length < 8) return '비밀번호는 8자 이상이어야 해요';
+    if (!RegExp(r'^[A-Za-z0-9]+$').hasMatch(pw)) {
+      return '비밀번호는 영문과 숫자만 사용할 수 있어요';
+    }
+    if (!RegExp(r'[A-Za-z]').hasMatch(pw) || !RegExp(r'[0-9]').hasMatch(pw)) {
+      return '비밀번호는 영문과 숫자를 모두 포함해야 해요';
+    }
+    return null;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -147,7 +167,8 @@ class _SignupScreenState extends State<SignupScreen> {
                 _field(_nickname, '가족에게 보일 이름', TextInputType.text),
                 const SizedBox(height: 12),
                 _label('비밀번호'),
-                _field(_password, '4자 이상 입력', TextInputType.visiblePassword,
+                _field(
+                    _password, '영문·숫자 포함 8자 이상', TextInputType.visiblePassword,
                     obscure: _obscure,
                     toggleObscure: () => setState(() => _obscure = !_obscure)),
                 const SizedBox(height: 20),
