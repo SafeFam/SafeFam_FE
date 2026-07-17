@@ -5,6 +5,7 @@ import '../services/auth_api.dart';
 import '../widgets/main_scaffold.dart';
 import 'family_flow.dart';
 import 'signup_screen.dart';
+import 'reset_password_screen.dart';
 
 /// 로그인 — 휴대폰 번호 + 비밀번호. 신규는 회원가입 화면으로 이동.
 /// 결과는 AuthApi를 통해 처리(지금은 껍데기).
@@ -86,6 +87,11 @@ class _LoginScreenState extends State<LoginScreen> {
         context, MaterialPageRoute(builder: (_) => const SignupScreen()));
   }
 
+  void _goResetPassword() {
+    Navigator.push(context,
+        MaterialPageRoute(builder: (_) => const ResetPasswordScreen()));
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -123,6 +129,13 @@ class _LoginScreenState extends State<LoginScreen> {
                           SfButton('회원가입',
                               variant: SfBtn.ghost,
                               onTap: _loading ? null : _goSignup),
+                          const SizedBox(height: 14),
+                          GestureDetector(
+                            onTap: _loading ? null : _goResetPassword,
+                            child: const Text('비밀번호를 잊으셨나요?',
+                                style: TextStyle(
+                                    fontSize: 14, color: AppColors.t2)),
+                          ),
                           const Spacer(),
                           _kakao(),
                           const SizedBox(height: 12),

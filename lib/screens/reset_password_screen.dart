@@ -2,20 +2,19 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common.dart';
 import '../services/auth_api.dart';
-import 'family_flow.dart';
 
-/// 회원가입 — 휴대폰 인증(요청→확인) 후 닉네임·비밀번호로 계정 생성.
-/// (로그인 화면의 '회원가입' 버튼으로 진입)
-class SignupScreen extends StatefulWidget {
-  const SignupScreen({super.key});
+/// 비밀번호 재설정 — 휴대폰 인증(요청→검증) 후 새 비밀번호로 변경.
+/// (로그인 화면의 '비밀번호를 잊으셨나요?'로 진입)
+/// 인증번호 발송·검증은 회원가입과 동일 API 재사용.
+class ResetPasswordScreen extends StatefulWidget {
+  const ResetPasswordScreen({super.key});
   @override
-  State<SignupScreen> createState() => _SignupScreenState();
+  State<ResetPasswordScreen> createState() => _ResetPasswordScreenState();
 }
 
-class _SignupScreenState extends State<SignupScreen> {
+class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   final _phone = TextEditingController();
   final _code = TextEditingController();
-  final _nickname = TextEditingController();
   final _password = TextEditingController();
   bool _requested = false; // 인증번호 발송 여부
   bool _loading = false;
@@ -25,7 +24,6 @@ class _SignupScreenState extends State<SignupScreen> {
   void dispose() {
     _phone.dispose();
     _code.dispose();
-    _nickname.dispose();
     _password.dispose();
     super.dispose();
   }
@@ -64,7 +62,7 @@ class _SignupScreenState extends State<SignupScreen> {
         }
       });
 
-  Future<void> _signup() => _run(() async {
+  Future<void> _reset() => _run(() async {
         if (_code.text.trim().isEmpty) {
           _toast('인증번호를 입력해 주세요');
           return;
@@ -75,40 +73,21 @@ class _SignupScreenState extends State<SignupScreen> {
           _toast('인증번호가 올바르지 않아요');
           return;
         }
-        if (_nickname.text.trim().isEmpty) {
-          _toast('닉네임을 입력해 주세요');
-          return;
-        }
         final pwError = AuthApi.passwordError(_password.text);
         if (pwError != null) {
           _toast(pwError);
           return;
         }
-        final created = await AuthApi.signup(
+        final ok = await AuthApi.resetPassword(
           phone: _phone.text.trim(),
-          name: _nickname.text.trim(),
-          password: _password.text,
+          newPassword: _password.text,
         );
-        if (!created) {
-          _toast('가입에 실패했어요. 잠시 후 다시 시도해 주세요');
+        if (!ok) {
+          _toast('비밀번호 재설정에 실패했어요. 잠시 후 다시 시도해 주세요');
           return;
         }
-        // 백엔드 회원가입은 토큰을 주지 않으므로, 이어서 로그인해 토큰을 발급받는다.
-        final r = await AuthApi.login(
-            phone: _phone.text.trim(), password: _password.text);
-        if (!r.success) {
-          // 계정은 생성됨 → 회원가입 폼에 두면 재시도 시 중복가입. 로그인 화면으로 복귀.
-          _toast('가입은 됐어요. 로그인 화면에서 로그인해 주세요');
-          if (mounted) Navigator.pop(context);
-          return;
-        }
-        if (mounted) {
-          // 가입 흐름 = 신규 회원 → 가족 등록으로
-          Navigator.pushAndRemoveUntil(
-              context,
-              MaterialPageRoute(builder: (_) => const FamilyRegisterScreen()),
-              (route) => false);
-        }
+        _toast('비밀번호를 바꿨어요. 새 비밀번호로 로그인해 주세요');
+        if (mounted) Navigator.pop(context); // 로그인 화면으로 복귀
       });
 
   @override
@@ -121,7 +100,7 @@ class _SignupScreenState extends State<SignupScreen> {
         leading: IconButton(
             icon: const Icon(Icons.arrow_back, color: AppColors.t1),
             onPressed: () => Navigator.maybePop(context)),
-        title: const Text('회원가입', style: AppText.titleScreen),
+        title: const Text('비밀번호 재설정', style: AppText.titleScreen),
       ),
       body: Stack(
         children: [
@@ -129,7 +108,7 @@ class _SignupScreenState extends State<SignupScreen> {
             padding: const EdgeInsets.fromLTRB(18, 8, 18, 18),
             children: [
               const SizedBox(height: 6),
-              const Text('휴대폰 인증 후 가입해요', style: AppText.caption),
+              const Text('휴대폰 인증 후 새 비밀번호를 설정해요', style: AppText.caption),
               const SizedBox(height: 20),
               _label('휴대전화 번호'),
               _field(_phone, '010-0000-0000', TextInputType.phone),
@@ -153,16 +132,13 @@ class _SignupScreenState extends State<SignupScreen> {
                 const SizedBox(height: 6),
                 _field(_code, '인증번호 입력', TextInputType.number),
                 const SizedBox(height: 12),
-                _label('닉네임'),
-                _field(_nickname, '가족에게 보일 이름', TextInputType.text),
-                const SizedBox(height: 12),
-                _label('비밀번호'),
+                _label('새 비밀번호'),
                 _field(
                     _password, '영문·숫자 포함 8자 이상', TextInputType.visiblePassword,
                     obscure: _obscure,
                     toggleObscure: () => setState(() => _obscure = !_obscure)),
                 const SizedBox(height: 20),
-                SfButton('가입하기', onTap: _loading ? null : _signup),
+                SfButton('비밀번호 재설정', onTap: _loading ? null : _reset),
               ],
             ],
           ),
@@ -185,7 +161,7 @@ class _SignupScreenState extends State<SignupScreen> {
       );
 
   Widget _field(TextEditingController c, String hint, TextInputType type,
-      {String? trailing, bool obscure = false, VoidCallback? toggleObscure}) {
+      {bool obscure = false, VoidCallback? toggleObscure}) {
     return TextField(
       controller: c,
       keyboardType: type,
@@ -194,9 +170,6 @@ class _SignupScreenState extends State<SignupScreen> {
       decoration: InputDecoration(
         hintText: hint,
         hintStyle: const TextStyle(color: AppColors.t3),
-        suffixText: trailing,
-        suffixStyle: const TextStyle(
-            fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.blue),
         suffixIcon: toggleObscure == null
             ? null
             : IconButton(
