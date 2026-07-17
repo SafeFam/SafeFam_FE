@@ -18,11 +18,15 @@ import 'package:http/http.dart' as http;
 ///  ※ GET /api/v1/users/me(마이페이지)는 아직 501 미구현 → myProfile은 껍데기 유지.
 ///  ※ 소셜 로그인(카카오/구글)은 백엔드 엔드포인트 미정 → socialLogin은 껍데기 유지.
 class AuthApi {
-  /// 서버 주소.
+  /// 서버 주소. 빌드시 `--dart-define=SAFEFAM_API_BASE_URL=...`로 주입하고,
+  /// 없으면 개발 기본값(에뮬레이터→호스트 localhost)을 쓴다.
   /// - Android 에뮬레이터에서 호스트 PC의 localhost는 `10.0.2.2`로 접근한다
   ///   (에뮬레이터의 `localhost`는 에뮬레이터 자신을 가리킴).
-  /// - 실기기: 같은 네트워크의 PC IP, 배포: 실제 도메인으로 교체.
-  static const String baseUrl = 'http://10.0.2.2:8080';
+  /// - 실기기: 같은 네트워크의 PC IP, 배포: `--dart-define`으로 실제 https 도메인.
+  static const String baseUrl = String.fromEnvironment(
+    'SAFEFAM_API_BASE_URL',
+    defaultValue: 'http://10.0.2.2:8080',
+  );
 
   // TODO: 토큰을 앱 재시작에도 유지하려면 flutter_secure_storage로 저장.
   static String? accessToken;
@@ -98,11 +102,21 @@ class AuthApi {
             headers: _headers(),
             body: jsonEncode({'phoneNumber': phone, 'password': password}))
         .timeout(_timeout);
-    if (!_isSuccess(res)) return const AuthResult(success: false);
+    if (!_isSuccess(res) || res.body.isEmpty) {
+      return const AuthResult(success: false);
+    }
     final data = jsonDecode(res.body)['data'];
     if (data is! Map<String, dynamic>) return const AuthResult(success: false);
-    accessToken = data['accessToken'] as String?;
-    refreshToken = data['refreshToken'] as String?;
+    final nextAccessToken = data['accessToken'];
+    final nextRefreshToken = data['refreshToken'];
+    if (nextAccessToken is! String ||
+        nextAccessToken.isEmpty ||
+        nextRefreshToken is! String ||
+        nextRefreshToken.isEmpty) {
+      return const AuthResult(success: false);
+    }
+    accessToken = nextAccessToken;
+    refreshToken = nextRefreshToken;
     return const AuthResult(success: true, isNewUser: false);
   }
 
