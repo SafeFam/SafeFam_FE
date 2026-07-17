@@ -6,42 +6,65 @@ import 'dart:async';
 /// 3단계(진용 API 완성)에서 아래 각 메서드 안의 TODO만 실제 http 호출로 바꾸면
 /// 화면 코드는 그대로 두고 연동됩니다.
 ///
-/// 합의 필요(진용·초은):
-///  - baseUrl
-///  - 공통 응답 포맷(ApiResponse): { success, data, error } 형태 여부
-///  - 토큰: accessToken / refreshToken 이 응답 바디로 오는지, 헤더로 오는지
+/// 백엔드(SafeFam_BE) 확인된 계약:
+///  - baseUrl: http://localhost:8080  (context-path 없음)
+///  - 공통 응답 포맷 ApiResponse: { status: "SUCCESS"|"ERROR", message, data }
+///  - 토큰은 응답 바디로 옴(TokenResponse):
+///      { tokenType:"Bearer", accessToken, refreshToken, expiresIn(초) }
+///  - 인증 필요한 요청은 헤더 Authorization: Bearer <accessToken>
+///  ※ 로그인/회원가입을 휴대폰 기반으로 바꾸는 중(백엔드 수정 대기).
+///    수정 완료되면 아래 경로/바디 필드명을 최종 스펙에 맞춘다.
 class AuthApi {
-  // TODO(3단계): 실제 서버 주소로 교체
-  static const String baseUrl = 'https://api.safefam.example';
+  // TODO(3단계): 실제 서버 주소로 교체(로컬 개발은 http://localhost:8080)
+  static const String baseUrl = 'http://localhost:8080';
 
   // TODO(3단계): 로그인 후 받은 토큰 저장(예: flutter_secure_storage)
   static String? accessToken;
   static String? refreshToken;
 
-  /// 인증번호 요청. 성공 여부만 반환.
+  /// 회원가입용 인증번호 발송. 성공 여부만 반환.
   static Future<bool> requestCode(String phone) async {
     await Future.delayed(const Duration(milliseconds: 400)); // 네트워크 흉내
-    // TODO(3단계): POST $baseUrl/auth/sms/request  body: { phone }
+    // TODO(3단계): POST $baseUrl/api/v1/auth/phone-verifications/send
+    //  body: { phoneNumber: phone }
     return true;
   }
 
-  /// 인증번호 확인 → 로그인/회원가입. 성공 시 토큰 저장.
-  ///
-  /// 휴대폰 가입은 인증번호 확인과 함께 닉네임·비밀번호를 함께 받는다.
-  /// (기존 회원은 서버가 phone으로 식별해 nickname/password 없이도 로그인 가능)
-  static Future<AuthResult> verifyCode(
-    String phone,
-    String code, {
-    String? nickname,
-    String? password,
+  /// 인증번호 검증(회원가입 사전 단계). 성공 여부만 반환.
+  static Future<bool> verifyCode(String phone, String code) async {
+    await Future.delayed(const Duration(milliseconds: 500));
+    // TODO(3단계): POST $baseUrl/api/v1/auth/phone-verifications/verify
+    //  body: { phoneNumber: phone, code }
+    return true;
+  }
+
+  /// 회원가입. 휴대폰 인증 완료 후 닉네임·비밀번호로 계정 생성.
+  static Future<AuthResult> signup({
+    required String phone,
+    required String nickname,
+    required String password,
   }) async {
     await Future.delayed(const Duration(milliseconds: 500));
-    // TODO(3단계): POST $baseUrl/auth/sms/verify
-    //  body: { phone, code, nickname, password }
-    //  → 응답에서 accessToken/refreshToken 저장, isNewUser 판별
+    // TODO(3단계): POST $baseUrl/api/v1/auth/signup
+    //  body: { phoneNumber: phone, nickname, password }  (최종 필드명은 백엔드 확정 후)
+    //  → 성공 시 로그인 처리(토큰 발급)까지 이어지면 토큰 저장
     accessToken = 'dummy_access';
     refreshToken = 'dummy_refresh';
     return const AuthResult(success: true, isNewUser: true);
+  }
+
+  /// 로그인. 휴대폰 번호 + 비밀번호. 성공 시 토큰 저장.
+  static Future<AuthResult> login({
+    required String phone,
+    required String password,
+  }) async {
+    await Future.delayed(const Duration(milliseconds: 500));
+    // TODO(3단계): POST $baseUrl/api/v1/auth/login
+    //  body: { phoneNumber: phone, password }
+    //  → 응답 data(TokenResponse)에서 accessToken/refreshToken 저장
+    accessToken = 'dummy_access';
+    refreshToken = 'dummy_refresh';
+    return const AuthResult(success: true, isNewUser: false);
   }
 
   /// 소셜 로그인(카카오/구글). provider: 'kakao' | 'google'
@@ -56,14 +79,16 @@ class AuthApi {
   /// 내 정보 조회(마이페이지).
   static Future<UserProfile> myProfile() async {
     await Future.delayed(const Duration(milliseconds: 300));
-    // TODO(3단계): GET $baseUrl/users/me  (헤더: Authorization: Bearer $accessToken)
+    // TODO(3단계): GET $baseUrl/api/v1/users/me  (헤더: Authorization: Bearer $accessToken)
+    //  ※ 백엔드 현재 501(미구현) — 구현 후 연동
     return const UserProfile(name: '이건', phoneMasked: '010-****-0000', role: '보호자');
   }
 
   /// 로그아웃. 토큰 폐기.
   static Future<void> logout() async {
     await Future.delayed(const Duration(milliseconds: 300));
-    // TODO(3단계): POST $baseUrl/auth/logout  → 서버 토큰 무효화
+    // TODO(3단계): POST $baseUrl/api/v1/auth/logout
+    //  body: { refreshToken }  헤더: Authorization: Bearer $accessToken
     accessToken = null;
     refreshToken = null;
   }
