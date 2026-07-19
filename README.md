@@ -4,7 +4,8 @@
 
 ## 흐름
 (스플래시 → 온보딩) → **로그인**(휴대폰 번호 + 비밀번호 · 카카오 · 구글) → 신규는 **회원가입**(휴대폰 인증 요청→확인 → 닉네임 + 비밀번호) → **가족 등록**(보호자/피보호자) → 보호자는 초대 코드 발급 → 연결 후 이름 설정 / 피보호자는 코드 입력 → 메인.
-> 진입점은 현재 `LoginScreen`. 로그인 화면의 '비밀번호를 잊으셨나요?' → **비밀번호 재설정**(휴대폰 인증 → 새 비밀번호). 스플래시·온보딩은 아직 앞단에 연결 전(별도 작업 예정).
+> 진입점은 현재 `LoginScreen`. 로그인 화면의 '비밀번호를 잊으셨나요?' → **비밀번호 재설정**(휴대폰 인증 → 새 비밀번호). **카카오로 계속하기** → 카카오 로그인, 신규회원이면 **카카오 온보딩**(휴대폰 인증 → 이름)으로 가입 후 가족 등록. 스플래시·온보딩은 아직 앞단에 연결 전(별도 작업 예정).
+> 카카오 로그인은 빌드 시 앱 키 주입 필요: `flutter run --dart-define=KAKAO_NATIVE_APP_KEY=<네이티브 앱 키>` (AndroidManifest의 리다이렉트 스킴 값과 동일해야 함).
 
 메인 하단 탭 **홈 · 이력 · 가족 · 검사** (설정=더보기는 홈 우상단 톱니바퀴로 진입).
 검사 탭 → 결과(NB 신호 기반). 결과 → 대응 챗봇 시트 → 신고 시트 / 전화 / 공유.
@@ -34,6 +35,7 @@ lib/
     login_screen.dart  로그인(휴대폰+비밀번호 · 회원가입 · 비밀번호 재설정 · 카카오 · 구글)
     signup_screen.dart 회원가입(휴대폰 인증 → 닉네임+비밀번호)
     reset_password_screen.dart 비밀번호 재설정(휴대폰 인증 → 새 비밀번호)
+    kakao_onboarding_screen.dart 카카오 신규회원 온보딩(카카오 로그인 → 휴대폰 인증+이름)
     mypage_screen.dart 마이페이지(내 정보·로그아웃)
     family_flow.dart   가족 등록 · 초대코드 · 연결 · 이름 설정
     home_screen.dart   홈(톱니→설정)
@@ -48,7 +50,9 @@ assets/character.png
 
 ## 다음 (기능 연결)
 - ✅ 인증 API(가입·로그인·로그아웃) http 연동 완료 — 로그인 E2E 검증됨
-- 마이페이지(`users/me`)·회원가입 SMS 발송·비밀번호 재설정(`POST /auth/password/reset` {phoneNumber,code,newPassword})은 백엔드 구현 대기
+- ✅ 카카오 소셜 로그인 연동 완료 (`/auth/kakao`·`/auth/kakao/signup`) — 신규회원은 카카오 온보딩으로
+- ✅ 비밀번호 재설정 백엔드 구현됨 — `POST /auth/password/reset` {phoneNumber, newPassword} (OTP는 서버측 인증 상태를 consume해 검증)
+- 마이페이지(`users/me` 501)·회원가입/재설정 SMS 실발송은 백엔드 구현 대기
 - 결과를 NB 응답(핸드오프 v2 4-1: score·signals·maskedContent)에 바인딩
 - 전화(`url_launcher`)·공유(`share_plus`)
 - 권한·오버레이 실제 구현(검증 후) · FCM · 상태관리(Provider/Riverpod)

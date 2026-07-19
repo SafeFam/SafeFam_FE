@@ -95,12 +95,12 @@ class AuthApi {
 
   /// 비밀번호 재설정. 휴대폰 인증(요청→검증) 완료 후 새 비밀번호로 변경.
   /// 인증번호 발송·검증은 requestCode/verifyCode 재사용.
-  /// 보안: 재설정 요청에 인증번호(code)를 함께 보내, 백엔드가 OTP 소유를
-  /// 검증·소비하는 것과 비밀번호 변경을 원자적으로 처리하게 한다.
-  /// (phone+newPassword만으로는 인증 없이 재설정될 수 있어 code 필수)
+  /// 보안: OTP 검증·소비는 백엔드가 서버측 인증 상태(verifyCode로 만들어진
+  /// verified 상태)를 consume하는 방식으로 처리한다. 따라서 재설정 요청 전에
+  /// 반드시 verifyCode를 호출해 서버측 인증을 통과시켜야 한다.
+  /// 백엔드 계약: POST /api/v1/auth/password/reset { phoneNumber, newPassword }.
   static Future<bool> resetPassword({
     required String phone,
-    required String code,
     required String newPassword,
   }) async {
     final res = await http
@@ -108,7 +108,6 @@ class AuthApi {
             headers: _headers(),
             body: jsonEncode({
               'phoneNumber': phone,
-              'code': code,
               'newPassword': newPassword,
             }))
         .timeout(_timeout);
@@ -159,13 +158,11 @@ class AuthApi {
   }
 
   /// 소셜 로그인(카카오/구글). provider: 'kakao' | 'google'
+  /// 구글은 백엔드 엔드포인트 미정 → 현재 실패 반환(껍데기).
   static Future<AuthResult> socialLogin(String provider) async {
-    print('socialLogin 호출: $provider');
     if (provider == 'kakao') {
-      return await _kakaoLogin();
+      return _kakaoLogin();
     }
-    // 구글은 나중에
-    await Future.delayed(const Duration(milliseconds: 500));
     return const AuthResult(success: false);
   }
 
@@ -205,8 +202,7 @@ class AuthApi {
           kakaoAccessToken: token.accessToken,
         );
       }
-    } catch (e) {
-      print('카카오 로그인 에러: $e');
+    } catch (_) {
       return const AuthResult(success: false);
     }
   }
