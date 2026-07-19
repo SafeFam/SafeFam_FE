@@ -4,6 +4,7 @@ import '../widgets/common.dart';
 import '../services/auth_api.dart';
 import '../widgets/main_scaffold.dart';
 import 'family_flow.dart';
+import 'kakao_onboarding_screen.dart';
 import 'signup_screen.dart';
 import 'reset_password_screen.dart';
 
@@ -30,11 +31,15 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _goNext(AuthResult r) {
     if (!mounted) return;
-    final next = r.isNewUser
-        ? const FamilyRegisterScreen() // 신규 → 가족 등록
-        : const MainScaffold(); // 기존 → 홈
-    Navigator.pushAndRemoveUntil(
-        context, MaterialPageRoute(builder: (_) => next), (route) => false);
+    final Widget next;
+    if (r.isNewUser && r.kakaoAccessToken != null) {
+      next = KakaoOnboardingScreen(kakaoAccessToken: r.kakaoAccessToken!);
+    } else if (r.isNewUser) {
+      next = const FamilyRegisterScreen();
+    } else {
+      next = const MainScaffold();
+    }
+    Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => next));
   }
 
   Future<void> _run(Future<void> Function() action) async {

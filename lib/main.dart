@@ -1,8 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 import 'theme/app_theme.dart';
 import 'screens/login_screen.dart';
 
-void main() => runApp(const SafeFamApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  const nativeAppKey = String.fromEnvironment('KAKAO_NATIVE_APP_KEY');
+  await KakaoSdk.init(nativeAppKey: nativeAppKey);
+  runApp(const SafeFamApp());
+}
 
 class SafeFamApp extends StatelessWidget {
   const SafeFamApp({super.key});

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 
 /// 인증 관련 서버 통신 담당.
 ///
@@ -158,12 +159,83 @@ class AuthApi {
   }
 
   /// 소셜 로그인(카카오/구글). provider: 'kakao' | 'google'
-  /// TODO: 백엔드 소셜 엔드포인트 확정 시 실제 호출로 교체(현재 껍데기).
   static Future<AuthResult> socialLogin(String provider) async {
+    print('socialLogin 호출: $provider');
+    if (provider == 'kakao') {
+      return await _kakaoLogin();
+    }
+    // 구글은 나중에
     await Future.delayed(const Duration(milliseconds: 500));
-    accessToken = 'dummy_access';
-    refreshToken = 'dummy_refresh';
-    return const AuthResult(success: true, isNewUser: true);
+    return const AuthResult(success: false);
+  }
+
+  static Future<AuthResult> _kakaoLogin() async {
+    try {
+      // 1. 카카오톡으로 로그인 (없으면 카카오 계정으로)
+      OAuthToken token;
+      if (await isKakaoTalkInstalled()) {
+        token = await UserApi.instance.loginWithKakaoTalk();
+      } else {
+        token = await UserApi.instance.loginWithKakaoAccount();
+      }
+
+      // 2. Spring Boot로 카카오 액세스 토큰 전달
+      final res = await http.post(
+        _uri('/api/v1/auth/kakao'),
+        headers: _headers(),
+        body: jsonEncode({'kakaoAccessToken': token.accessToken}),
+      ).timeout(_timeout);
+
+      if (!_isSuccess(res)) return const AuthResult(success: false);
+
+      final data = jsonDecode(res.body)['data'];
+      final isNewUser = data['isNewUser'] as bool;
+
+      if (!isNewUser) {
+        // 기존 회원 → JWT 저장
+        final tokenData = data['token'] as Map<String, dynamic>;
+        accessToken = tokenData['accessToken'];
+        refreshToken = tokenData['refreshToken'];
+        return const AuthResult(success: true, isNewUser: false);
+      } else {
+        // 신규 회원 → kakaoId 저장해서 온보딩으로
+        return AuthResult(
+          success: true,
+          isNewUser: true,
+          kakaoAccessToken: token.accessToken,
+        );
+      }
+    } catch (e) {
+      print('카카오 로그인 에러: $e');
+      return const AuthResult(success: false);
+    }
+  }
+
+  static Future<AuthResult> kakaoSignup({
+    required String kakaoAccessToken,
+    required String phoneNumber,
+    required String name,
+  }) async {
+    try {
+      final res = await http.post(
+        _uri('/api/v1/auth/kakao/signup'),
+        headers: _headers(),
+        body: jsonEncode({
+          'kakaoAccessToken': kakaoAccessToken,
+          'phoneNumber': phoneNumber,
+          'name': name,
+        }),
+      ).timeout(_timeout);
+
+      if (!_isSuccess(res)) return const AuthResult(success: false);
+
+      final data = jsonDecode(res.body)['data'];
+      accessToken = data['accessToken'];
+      refreshToken = data['refreshToken'];
+      return const AuthResult(success: true);
+    } catch (e) {
+      return const AuthResult(success: false);
+    }
   }
 
   /// 내 정보 조회(마이페이지).
@@ -196,8 +268,15 @@ class AuthResult {
   final bool success;
   final bool isNewUser; // 신규면 가족 등록으로, 기존이면 홈으로
   final String? message;
-  const AuthResult(
-      {required this.success, this.isNewUser = false, this.message});
+  final String? kakaoId;
+  final String? kakaoAccessToken;
+  const AuthResult({
+    required this.success,
+    this.isNewUser = false,
+    this.message,
+    this.kakaoId,
+    this.kakaoAccessToken,
+  });
 }
 
 class UserProfile {
