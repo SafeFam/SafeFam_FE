@@ -78,9 +78,10 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
           _toast(pwError);
           return;
         }
+        // verifyCode로 서버측 인증(verified) 상태를 만든 뒤 재설정을 요청한다.
+        // 백엔드가 이 상태를 consume해 OTP 소유를 검증하므로 code는 바디에 없다.
         final ok = await AuthApi.resetPassword(
           phone: _phone.text.trim(),
-          code: _code.text.trim(),
           newPassword: _password.text,
         );
         if (!ok) {
