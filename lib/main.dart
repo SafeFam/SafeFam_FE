@@ -6,7 +6,7 @@ import 'screens/login_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   const nativeAppKey = String.fromEnvironment('KAKAO_NATIVE_APP_KEY');
-  KakaoSdk.init(nativeAppKey: nativeAppKey);
+  await KakaoSdk.init(nativeAppKey: nativeAppKey);
   runApp(const SafeFamApp());
 }
 

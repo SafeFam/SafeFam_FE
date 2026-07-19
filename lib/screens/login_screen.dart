@@ -30,6 +30,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _goNext(AuthResult r) {
+    if (!mounted) return;
     final Widget next;
     if (r.isNewUser && r.kakaoAccessToken != null) {
       next = KakaoOnboardingScreen(kakaoAccessToken: r.kakaoAccessToken!);

@@ -21,9 +21,18 @@ class _KakaoOnboardingScreenState extends State<KakaoOnboardingScreen> {
   bool _loading = false;
   String? _error;
 
+  @override
+  void dispose() {
+    _phoneCtrl.dispose();
+    _codeCtrl.dispose();
+    _nameCtrl.dispose();
+    super.dispose();
+  }
+
   Future<void> _requestCode() async {
     setState(() { _loading = true; _error = null; });
     final ok = await AuthApi.requestCode(_phoneCtrl.text.trim());
+    if (!mounted) return;
     setState(() {
       _loading = false;
       _codeSent = ok;
@@ -34,6 +43,7 @@ class _KakaoOnboardingScreenState extends State<KakaoOnboardingScreen> {
   Future<void> _verifyCode() async {
     setState(() { _loading = true; _error = null; });
     final ok = await AuthApi.verifyCode(_phoneCtrl.text.trim(), _codeCtrl.text.trim());
+    if (!mounted) return;
     setState(() {
       _loading = false;
       _codeVerified = ok;
