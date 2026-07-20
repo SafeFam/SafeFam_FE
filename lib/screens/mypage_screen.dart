@@ -23,6 +23,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
   }
 
   void _reload() {
+    if (!mounted) return;
     setState(() {
       _future = AuthApi.myProfile();
     });
@@ -105,6 +106,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
         );
       },
     );
+    controller.dispose();
     if (newName == null || newName == current) return;
     final updated = await AuthApi.updateName(newName);
     if (updated == null) {
@@ -166,6 +168,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
         );
       },
     );
+    controller.dispose();
     if (password == null) return;
     final ok = await AuthApi.withdraw(password);
     if (!ok) {
