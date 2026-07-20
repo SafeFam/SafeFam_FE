@@ -24,7 +24,13 @@ import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 ///  - DELETE /api/v1/users/me { password } → 204 (soft delete). 비번 틀리면 실패.
 ///  - 셋 다 보호된 API → Authorization: Bearer 필수.
 ///  - role은 시스템 role(USER/ADMIN)이며 가족 role(보호자/피보호자)이 아니다.
-///  ※ /users/me/settings(탐지·알림 설정)는 아직 501 미구현.
+///
+/// 탐지·알림 설정 users/me/settings (SafeFam_BE 구현 완료, 소스 대조):
+///  - GET   /api/v1/users/me/settings → UserSettings
+///      { autoAnalysisEnabled, pushEnabled } (기본값 둘 다 true)
+///  - PATCH /api/v1/users/me/settings { autoAnalysisEnabled?, pushEnabled? }
+///      → 변경된 UserSettings. ★전달한 필드만 변경(null은 무시하는 부분 수정).
+///  - 둘 다 보호된 API → Authorization: Bearer 필수.
 ///  ※ 구글 소셜 로그인은 백엔드 엔드포인트 미정 → 해당 분기만 껍데기 유지.
 class AuthApi {
   /// 서버 주소. 빌드시 `--dart-define=SAFEFAM_API_BASE_URL=...`로 주입하고,
@@ -288,6 +294,50 @@ class AuthApi {
     return ok;
   }
 
+  /// 탐지·알림 설정 조회. GET /api/v1/users/me/settings (Bearer).
+  /// 실패 시 예외를 던져 화면이 에러 상태를 보이게 한다.
+  static Future<UserSettings> getSettings() async {
+    final res = await http
+        .get(_uri('/api/v1/users/me/settings'), headers: _headers(auth: true))
+        .timeout(_timeout);
+    if (!_isSuccess(res) || res.body.isEmpty) {
+      throw Exception('설정을 불러오지 못했습니다');
+    }
+    final data = jsonDecode(res.body)['data'];
+    if (data is! Map<String, dynamic>) {
+      throw Exception('설정을 불러오지 못했습니다');
+    }
+    return UserSettings.fromJson(data);
+  }
+
+  /// 탐지·알림 설정 변경. PATCH /api/v1/users/me/settings (Bearer).
+  /// 전달한 필드만 변경되므로, 바꾸려는 값만 넘긴다(나머지는 null → 서버가 무시).
+  /// 성공 시 서버가 반영한 최신 설정을 반환, 실패 시 null.
+  static Future<UserSettings?> updateSettings({
+    bool? autoAnalysisEnabled,
+    bool? pushEnabled,
+  }) async {
+    final body = <String, dynamic>{};
+    if (autoAnalysisEnabled != null) {
+      body['autoAnalysisEnabled'] = autoAnalysisEnabled;
+    }
+    if (pushEnabled != null) body['pushEnabled'] = pushEnabled;
+    try {
+      final res = await http
+          .patch(_uri('/api/v1/users/me/settings'),
+              headers: _headers(auth: true), body: jsonEncode(body))
+          .timeout(_timeout);
+      if (!_isSuccess(res) || res.body.isEmpty) return null;
+      final data = jsonDecode(res.body)['data'];
+      if (data is! Map<String, dynamic>) return null;
+      return UserSettings.fromJson(data);
+    } catch (_) {
+      // 타임아웃·연결 실패 등 전송 계층 예외도 null로 수렴시켜, 호출부(UI)가
+      // 예외 없이 실패 경로(원복+안내)를 타게 한다.
+      return null;
+    }
+  }
+
   /// 로그아웃. 서버 토큰 무효화 후 로컬 토큰 폐기.
   static Future<void> logout() async {
     try {
@@ -347,4 +397,26 @@ class UserProfile {
       createdAt: created is String ? DateTime.tryParse(created) : null,
     );
   }
+}
+
+/// 백엔드 UserSettingsResponse 매핑 — 탐지·알림 설정.
+/// autoAnalysisEnabled: 문자 자동 탐지 · pushEnabled: 푸시 알림. 기본값 둘 다 true.
+class UserSettings {
+  final bool autoAnalysisEnabled;
+  final bool pushEnabled;
+  const UserSettings({
+    required this.autoAnalysisEnabled,
+    required this.pushEnabled,
+  });
+
+  factory UserSettings.fromJson(Map<String, dynamic> json) => UserSettings(
+        autoAnalysisEnabled: json['autoAnalysisEnabled'] as bool? ?? true,
+        pushEnabled: json['pushEnabled'] as bool? ?? true,
+      );
+
+  UserSettings copyWith({bool? autoAnalysisEnabled, bool? pushEnabled}) =>
+      UserSettings(
+        autoAnalysisEnabled: autoAnalysisEnabled ?? this.autoAnalysisEnabled,
+        pushEnabled: pushEnabled ?? this.pushEnabled,
+      );
 }

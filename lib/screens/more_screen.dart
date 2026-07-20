@@ -18,6 +18,75 @@ class _MoreScreenState extends State<MoreScreen> {
   bool _big = false;
   bool _voice = true;
 
+  // 탐지·알림 설정(users/me/settings). 진입 시 GET, 토글 변경 시 PATCH.
+  UserSettings? _settings; // null=아직 못 불러옴
+  bool _settingsLoading = true;
+  bool _settingsError = false;
+  bool _savingSettings = false; // PATCH 진행 중엔 토글 잠금(중복 요청 방지)
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    setState(() {
+      _settingsLoading = true;
+      _settingsError = false;
+    });
+    try {
+      final s = await AuthApi.getSettings();
+      if (!mounted) return;
+      setState(() {
+        _settings = s;
+        _settingsLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _settingsLoading = false;
+        _settingsError = true;
+      });
+    }
+  }
+
+  void _toast(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  /// 토글 변경 → 낙관적으로 UI 먼저 반영하고 PATCH. 실패하면 되돌리고 안내.
+  Future<void> _updateSetting({bool? autoAnalysisEnabled, bool? pushEnabled}) async {
+    final prev = _settings;
+    if (prev == null) return;
+    setState(() {
+      _savingSettings = true;
+      _settings = prev.copyWith(
+        autoAnalysisEnabled: autoAnalysisEnabled,
+        pushEnabled: pushEnabled,
+      );
+    });
+    final updated = await AuthApi.updateSettings(
+      autoAnalysisEnabled: autoAnalysisEnabled,
+      pushEnabled: pushEnabled,
+    );
+    if (!mounted) return;
+    setState(() {
+      _savingSettings = false;
+      if (updated != null) {
+        _settings = updated; // 서버 반영값으로 동기화
+      } else {
+        _settings = prev; // 실패 → 원복
+      }
+    });
+    if (updated == null) {
+      _toast('설정을 변경하지 못했어요. 잠시 후 다시 시도해 주세요');
+    }
+  }
+
   Widget _link(IconData icon, String label, {VoidCallback? onTap}) => InkWell(
         onTap: onTap,
         child: Padding(
@@ -31,10 +100,25 @@ class _MoreScreenState extends State<MoreScreen> {
         ),
       );
 
-  Widget _toggle(IconData icon, String label, bool v, ValueChanged<bool> on) => Row(children: [
+  /// [on]이 null이면 스위치가 비활성(저장 중 중복 요청 방지 등)된다.
+  Widget _toggle(IconData icon, String label, bool v, ValueChanged<bool>? on,
+          {String? sub}) =>
+      Row(children: [
         Icon(icon, color: AppColors.blue, size: 22),
         const SizedBox(width: 10),
-        Expanded(child: Text(label, style: const TextStyle(fontSize: 16))),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(label, style: const TextStyle(fontSize: 16)),
+              if (sub != null) ...[
+                const SizedBox(height: 2),
+                Text(sub, style: AppText.caption.copyWith(color: AppColors.t3)),
+              ],
+            ],
+          ),
+        ),
         Switch(
             value: v,
             activeColor: Colors.white,
@@ -42,6 +126,56 @@ class _MoreScreenState extends State<MoreScreen> {
             inactiveTrackColor: AppColors.toggleOff,
             onChanged: on),
       ]);
+
+  /// 탐지·알림 설정 카드 — 로딩/에러/정상 3상태. 정상이면 토글 2개.
+  Widget _detectionCard() {
+    if (_settingsLoading) {
+      return const SfCard(
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: 20),
+          child: Center(
+              child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2.5, color: AppColors.blue))),
+        ),
+      );
+    }
+    if (_settingsError || _settings == null) {
+      return SfCard(
+        child: Column(children: [
+          const Text('설정을 불러오지 못했어요',
+              style: TextStyle(fontSize: 16, color: AppColors.t2)),
+          const SizedBox(height: 12),
+          SfButton('다시 시도', variant: SfBtn.ghost, onTap: _loadSettings),
+        ]),
+      );
+    }
+    final s = _settings!;
+    // 저장 중엔 두 토글 모두 잠가 중복/경합 요청을 막는다.
+    return SfCard(
+      child: Column(children: [
+        _toggle(
+          Icons.security_outlined,
+          '자동 탐지',
+          s.autoAnalysisEnabled,
+          _savingSettings
+              ? null
+              : (v) => _updateSetting(autoAnalysisEnabled: v),
+          sub: '문자를 자동으로 분석해 위험을 알려드려요',
+        ),
+        const Divider(color: AppColors.line, height: 24),
+        _toggle(
+          Icons.notifications_none,
+          '푸시 알림',
+          s.pushEnabled,
+          _savingSettings ? null : (v) => _updateSetting(pushEnabled: v),
+          sub: '위험 탐지·가족 알림을 푸시로 받아요',
+        ),
+      ]),
+    );
+  }
 
   Future<void> _logout(BuildContext context) async {
     final ok = await showDialog<bool>(
@@ -80,6 +214,9 @@ class _MoreScreenState extends State<MoreScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(18, 8, 18, 18),
         children: [
+          const SectionLabel('탐지·알림'),
+          _detectionCard(),
+          const SizedBox(height: 16),
           const SectionLabel('보기 설정 · 누구나'),
           SfCard(
             child: Column(children: [
