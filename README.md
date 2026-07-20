@@ -53,7 +53,8 @@ assets/character.png
 - ✅ 카카오 소셜 로그인 연동 완료 (`/auth/kakao`·`/auth/kakao/signup`) — 신규회원은 카카오 온보딩으로
 - ✅ 비밀번호 재설정 백엔드 구현됨 — `POST /auth/password/reset` {phoneNumber, newPassword} (OTP는 서버측 인증 상태를 consume해 검증)
 - ✅ 마이페이지 `users/me` 연동 완료 — `GET`(조회)·`PATCH`(이름 수정)·`DELETE`(회원 탈퇴, 비밀번호 재확인)
-- 회원가입/재설정 인증문자는 실제 SMS(Solapi) 발송이라 서버 SMS 설정 + 실제 수신 가능한 번호 필요. `users/me/settings`(탐지·알림 설정)는 백엔드 501 대기
+- ✅ 탐지·알림 설정 `users/me/settings` 연동 완료 — `GET`·`PATCH`(`autoAnalysisEnabled`·`pushEnabled` 토글, 전달한 필드만 부분 수정)
+- 회원가입/재설정 인증문자는 실제 SMS(Solapi) 발송이라 서버 SMS 설정 + 실제 수신 가능한 번호 필요
 - 결과를 NB 응답(핸드오프 v2 4-1: score·signals·maskedContent)에 바인딩
 - 전화(`url_launcher`)·공유(`share_plus`)
 - 권한·오버레이 실제 구현(검증 후) · FCM · 상태관리(Provider/Riverpod)
