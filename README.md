@@ -36,14 +36,14 @@ lib/
     signup_screen.dart 회원가입(휴대폰 인증 → 닉네임+비밀번호)
     reset_password_screen.dart 비밀번호 재설정(휴대폰 인증 → 새 비밀번호)
     kakao_onboarding_screen.dart 카카오 신규회원 온보딩(카카오 로그인 → 휴대폰 인증+이름)
-    mypage_screen.dart 마이페이지(내 정보·로그아웃)
+    mypage_screen.dart 마이페이지(내 정보 조회·이름 수정·로그아웃·회원 탈퇴)
     family_flow.dart   가족 등록 · 초대코드 · 연결 · 이름 설정
     home_screen.dart   홈(톱니→설정)
     check_screen.dart  검사 탭(수동 분석)
     results.dart       결과(NB 신호)·보이스피싱·URL
     overlay_alert.dart 강제 오버레이 경고
     history_screen.dart / family_screen.dart / more_screen.dart(설정)
-  services/auth_api.dart  인증 API — 백엔드 http 연동(가입·로그인·로그아웃). 마이페이지는 users/me 501로 껍데기
+  services/auth_api.dart  인증 API — 백엔드 http 연동(가입·로그인·로그아웃 + 마이페이지 users/me 조회·수정·탈퇴)
   sheets.dart          챗봇·신고·공유
 assets/character.png
 ```
@@ -52,7 +52,8 @@ assets/character.png
 - ✅ 인증 API(가입·로그인·로그아웃) http 연동 완료 — 로그인 E2E 검증됨
 - ✅ 카카오 소셜 로그인 연동 완료 (`/auth/kakao`·`/auth/kakao/signup`) — 신규회원은 카카오 온보딩으로
 - ✅ 비밀번호 재설정 백엔드 구현됨 — `POST /auth/password/reset` {phoneNumber, newPassword} (OTP는 서버측 인증 상태를 consume해 검증)
-- 마이페이지(`users/me` 501)·회원가입/재설정 SMS 실발송은 백엔드 구현 대기
+- ✅ 마이페이지 `users/me` 연동 완료 — `GET`(조회)·`PATCH`(이름 수정)·`DELETE`(회원 탈퇴, 비밀번호 재확인)
+- 회원가입/재설정 인증문자는 실제 SMS(Solapi) 발송이라 서버 SMS 설정 + 실제 수신 가능한 번호 필요. `users/me/settings`(탐지·알림 설정)는 백엔드 501 대기
 - 결과를 NB 응답(핸드오프 v2 4-1: score·signals·maskedContent)에 바인딩
 - 전화(`url_launcher`)·공유(`share_plus`)
 - 권한·오버레이 실제 구현(검증 후) · FCM · 상태관리(Provider/Riverpod)
