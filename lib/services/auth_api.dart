@@ -322,14 +322,20 @@ class AuthApi {
       body['autoAnalysisEnabled'] = autoAnalysisEnabled;
     }
     if (pushEnabled != null) body['pushEnabled'] = pushEnabled;
-    final res = await http
-        .patch(_uri('/api/v1/users/me/settings'),
-            headers: _headers(auth: true), body: jsonEncode(body))
-        .timeout(_timeout);
-    if (!_isSuccess(res) || res.body.isEmpty) return null;
-    final data = jsonDecode(res.body)['data'];
-    if (data is! Map<String, dynamic>) return null;
-    return UserSettings.fromJson(data);
+    try {
+      final res = await http
+          .patch(_uri('/api/v1/users/me/settings'),
+              headers: _headers(auth: true), body: jsonEncode(body))
+          .timeout(_timeout);
+      if (!_isSuccess(res) || res.body.isEmpty) return null;
+      final data = jsonDecode(res.body)['data'];
+      if (data is! Map<String, dynamic>) return null;
+      return UserSettings.fromJson(data);
+    } catch (_) {
+      // 타임아웃·연결 실패 등 전송 계층 예외도 null로 수렴시켜, 호출부(UI)가
+      // 예외 없이 실패 경로(원복+안내)를 타게 한다.
+      return null;
+    }
   }
 
   /// 로그아웃. 서버 토큰 무효화 후 로컬 토큰 폐기.
