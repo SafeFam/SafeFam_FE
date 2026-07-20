@@ -16,8 +16,16 @@ import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 ///  - 회원가입: { phoneNumber, password, name } → 201만(토큰 없음) → 이어서 로그인
 ///  - 비밀번호 정책: 영문+숫자 포함, 특수문자 없음, 8~64자
 ///  - 로그인 응답에 신규회원 플래그 없음 → 신규/기존은 프론트 흐름으로 판단
-///  ※ GET /api/v1/users/me(마이페이지)는 아직 501 미구현 → myProfile은 껍데기 유지.
-///  ※ 소셜 로그인(카카오/구글)은 백엔드 엔드포인트 미정 → socialLogin은 껍데기 유지.
+///
+/// 마이페이지 users/me (SafeFam_BE #39 구현 완료, 2026-07-20 소스 대조):
+///  - GET    /api/v1/users/me → UserResponse
+///      { userId, phoneNumber(★서버 마스킹 "010-****-0000"), name, role, createdAt }
+///  - PATCH  /api/v1/users/me { name } → 수정된 UserResponse (현재 이름만 수정)
+///  - DELETE /api/v1/users/me { password } → 204 (soft delete). 비번 틀리면 실패.
+///  - 셋 다 보호된 API → Authorization: Bearer 필수.
+///  - role은 시스템 role(USER/ADMIN)이며 가족 role(보호자/피보호자)이 아니다.
+///  ※ /users/me/settings(탐지·알림 설정)는 아직 501 미구현.
+///  ※ 구글 소셜 로그인은 백엔드 엔드포인트 미정 → 해당 분기만 껍데기 유지.
 class AuthApi {
   /// 서버 주소. 빌드시 `--dart-define=SAFEFAM_API_BASE_URL=...`로 주입하고,
   /// 없으면 개발 기본값(에뮬레이터→호스트 localhost)을 쓴다.
@@ -234,12 +242,50 @@ class AuthApi {
     }
   }
 
-  /// 내 정보 조회(마이페이지).
-  /// TODO: GET $baseUrl/api/v1/users/me (헤더 Bearer) — 백엔드 현재 501, 구현 후 연동.
+  /// 내 정보 조회(마이페이지). GET /api/v1/users/me (Bearer).
+  /// 실패 시 예외를 던져 화면(FutureBuilder)이 에러 상태를 보이게 한다.
   static Future<UserProfile> myProfile() async {
-    await Future.delayed(const Duration(milliseconds: 300));
-    return const UserProfile(
-        name: '이건', phoneMasked: '010-****-0000', role: '보호자');
+    final res = await http
+        .get(_uri('/api/v1/users/me'), headers: _headers(auth: true))
+        .timeout(_timeout);
+    if (!_isSuccess(res) || res.body.isEmpty) {
+      throw Exception('프로필을 불러오지 못했습니다');
+    }
+    final data = jsonDecode(res.body)['data'];
+    if (data is! Map<String, dynamic>) {
+      throw Exception('프로필을 불러오지 못했습니다');
+    }
+    return UserProfile.fromJson(data);
+  }
+
+  /// 내 정보(이름) 수정. PATCH /api/v1/users/me { name } (Bearer).
+  /// 성공 시 수정된 프로필을 반환, 실패 시 null.
+  static Future<UserProfile?> updateName(String name) async {
+    final res = await http
+        .patch(_uri('/api/v1/users/me'),
+            headers: _headers(auth: true), body: jsonEncode({'name': name}))
+        .timeout(_timeout);
+    if (!_isSuccess(res) || res.body.isEmpty) return null;
+    final data = jsonDecode(res.body)['data'];
+    if (data is! Map<String, dynamic>) return null;
+    return UserProfile.fromJson(data);
+  }
+
+  /// 회원 탈퇴. DELETE /api/v1/users/me { password } → 204 (soft delete).
+  /// 본인 확인용 비밀번호 재입력 필요. 비번이 틀리면 실패(false).
+  /// 성공 시 로컬 토큰을 폐기해 로그아웃 상태로 만든다.
+  static Future<bool> withdraw(String password) async {
+    final res = await http
+        .delete(_uri('/api/v1/users/me'),
+            headers: _headers(auth: true),
+            body: jsonEncode({'password': password}))
+        .timeout(_timeout);
+    final ok = res.statusCode == 204 || _isSuccess(res);
+    if (ok) {
+      accessToken = null;
+      refreshToken = null;
+    }
+    return ok;
   }
 
   /// 로그아웃. 서버 토큰 무효화 후 로컬 토큰 폐기.
@@ -275,10 +321,30 @@ class AuthResult {
   });
 }
 
+/// 백엔드 UserResponse 매핑. phoneMasked는 서버가 이미 "010-****-0000"으로 마스킹.
+/// role은 시스템 role(USER/ADMIN) — 가족 role(보호자/피보호자)이 아님.
 class UserProfile {
+  final int? userId;
   final String name;
-  final String phoneMasked;
-  final String role; // 보호자 | 피보호자
-  const UserProfile(
-      {required this.name, required this.phoneMasked, required this.role});
+  final String phoneMasked; // 서버 마스킹된 phoneNumber
+  final String role; // USER | ADMIN
+  final DateTime? createdAt;
+  const UserProfile({
+    this.userId,
+    required this.name,
+    required this.phoneMasked,
+    required this.role,
+    this.createdAt,
+  });
+
+  factory UserProfile.fromJson(Map<String, dynamic> json) {
+    final created = json['createdAt'];
+    return UserProfile(
+      userId: json['userId'] is int ? json['userId'] as int : null,
+      name: (json['name'] as String?) ?? '',
+      phoneMasked: (json['phoneNumber'] as String?) ?? '',
+      role: (json['role'] as String?) ?? 'USER',
+      createdAt: created is String ? DateTime.tryParse(created) : null,
+    );
+  }
 }
