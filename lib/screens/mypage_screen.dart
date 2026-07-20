@@ -293,22 +293,30 @@ class _MyPageScreenState extends State<MyPageScreen> {
         ],
       );
 
-  /// 값 옆에 수정 아이콘을 붙인 탭 가능한 행.
+  /// 값 옆에 수정 아이콘을 붙인 탭 가능한 행. 긴 이름은 줄여서(...) 넘침 방지.
   Widget _editRow(String k, String v, {required VoidCallback onTap}) => InkWell(
         onTap: onTap,
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(k, style: const TextStyle(fontSize: 16, color: AppColors.t2)),
-            Row(
-              children: [
-                Text(v,
-                    style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.w600)),
-                const SizedBox(width: 6),
-                const Icon(Icons.edit_outlined,
-                    size: 18, color: AppColors.t3),
-              ],
+            const SizedBox(width: 12),
+            Flexible(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: Text(v,
+                        textAlign: TextAlign.right,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.w600)),
+                  ),
+                  const SizedBox(width: 6),
+                  const Icon(Icons.edit_outlined,
+                      size: 18, color: AppColors.t3),
+                ],
+              ),
             ),
           ],
         ),
