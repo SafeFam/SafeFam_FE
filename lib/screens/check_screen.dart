@@ -1,11 +1,57 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common.dart';
+import '../services/analysis_api.dart';
 import 'results.dart';
 
 /// 하단 탭 "검사" — 수동 분석 입력 (탭이라 뒤로가기 없음).
-class CheckScreen extends StatelessWidget {
+class CheckScreen extends StatefulWidget {
   const CheckScreen({super.key});
+  @override
+  State<CheckScreen> createState() => _CheckScreenState();
+}
+
+class _CheckScreenState extends State<CheckScreen> {
+  final _controller = TextEditingController();
+  bool _loading = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _analyze() async {
+    final text = _controller.text.trim();
+    if (text.isEmpty) {
+      _snack('검사할 문자를 입력해 주세요.');
+      return;
+    }
+    setState(() => _loading = true);
+    final result = await AnalysisApi.analyze(
+      content: text,
+      receivedAt: DateTime.now(),
+      source: AnalysisSource.manual,
+    );
+    if (!mounted) return;
+    setState(() => _loading = false);
+    if (result == null) {
+      _snack('분석에 실패했어요. 잠시 후 다시 시도해 주세요.');
+      return;
+    }
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+          builder: (_) => ResultScreen(result: result, messageText: text)),
+    );
+  }
+
+  void _snack(String msg) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(msg)));
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -33,12 +79,13 @@ class CheckScreen extends StatelessWidget {
                     decoration: BoxDecoration(
                         border: Border.all(color: AppColors.line, width: 1.5),
                         borderRadius: BorderRadius.circular(14)),
-                    child: const TextField(
+                    child: TextField(
+                      controller: _controller,
                       maxLines: null,
                       expands: true,
                       textAlignVertical: TextAlignVertical.top,
-                      style: TextStyle(fontSize: 16, height: 1.5),
-                      decoration: InputDecoration.collapsed(
+                      style: const TextStyle(fontSize: 16, height: 1.5),
+                      decoration: const InputDecoration.collapsed(
                           hintText: '문자 내용을 여기에 붙여넣기',
                           hintStyle: TextStyle(color: AppColors.t3)),
                     ),
@@ -58,10 +105,9 @@ class CheckScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 12),
-                SfButton('검사하기',
+                SfButton(_loading ? '분석 중…' : '검사하기',
                     icon: Icons.shield_outlined,
-                    onTap: () => Navigator.push(context,
-                        MaterialPageRoute(builder: (_) => const ResultScreen()))),
+                    onTap: _loading ? null : _analyze),
               ],
             ),
           ),

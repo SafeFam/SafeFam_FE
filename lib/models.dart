@@ -54,17 +54,3 @@ const sampleTrends = <(String, RiskLevel, String)>[
   ('검찰·금감원 사칭', RiskLevel.med, '주의'),
   ('저금리 대출 사기', RiskLevel.med, '주의'),
 ];
-
-/// NB 파이프라인이 탐지한 구조적 신호(결과 화면 근거).
-class DetectionSignal {
-  final IconData icon;
-  final String label;
-  final String detail;
-  const DetectionSignal(this.icon, this.label, this.detail);
-}
-
-const sampleSignals = <DetectionSignal>[
-  DetectionSignal(Icons.account_balance, '기관 사칭 정황', '"검찰·수사관" 등 기관을 사칭'),
-  DetectionSignal(Icons.credit_card, '안전계좌 언급', '"안전계좌로 이체" 표현 감지'),
-  DetectionSignal(Icons.notifications_active, '긴급성 압박', '"즉시·정지" 등 불안 유도'),
-];
