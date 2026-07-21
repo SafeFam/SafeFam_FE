@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common.dart';
+import '../widgets/score_gauge.dart';
 import '../models.dart';
+import '../services/analysis_api.dart';
 import '../sheets.dart';
 
 PreferredSizeWidget _resultBar(BuildContext c, String title, {bool share = true}) {
@@ -42,9 +44,53 @@ Widget _helpCard(BuildContext c) => SfCard(
       ),
     );
 
-/// 5 · 문자 탐지 결과 (NB 신호 기반).
+/// IndicatorType별 아이콘 매핑(위험 근거 리스트 좌측).
+IconData _indicatorIcon(IndicatorType? t) => switch (t) {
+      IndicatorType.impersonation => Icons.account_balance,
+      IndicatorType.financialAction => Icons.credit_card,
+      IndicatorType.sensitiveInformation => Icons.badge_outlined,
+      IndicatorType.urgency => Icons.notifications_active,
+      IndicatorType.shortenedUrl => Icons.link,
+      IndicatorType.maliciousUrl => Icons.dangerous_outlined,
+      null => Icons.info_outline,
+    };
+
+/// 결과 제목. 위험도·피싱 유형으로 문장을 만든다.
+String _resultTitle(AnalysisResult r) {
+  if (r.riskLevel == RiskLevel.low) return '안전한 문자예요';
+  final cat = r.category?.label;
+  if (cat != null) return '$cat 문자예요';
+  return r.riskLevel == RiskLevel.high ? '위험한 문자예요' : '주의가 필요한 문자예요';
+}
+
+/// result 미지정(오버레이 dev 프리뷰) 시 쓰는 데모 결과.
+final AnalysisResult _demoResult = AnalysisResult(
+  analysisId: 0,
+  riskScore: 92,
+  riskLevel: RiskLevel.high,
+  category: PhishingCategory.governmentAgency,
+  explanation: '기관을 사칭해 겁을 주고, 안전계좌로 송금을 유도하는 수법이에요. 절대 응하지 마세요.',
+  scoreBreakdown:
+      const ScoreBreakdown(llmScore: 0, urlScore: 100, patternScore: 85),
+  indicators: const [
+    Indicator(type: IndicatorType.impersonation, description: '"검찰·수사관" 등 기관을 사칭'),
+    Indicator(type: IndicatorType.financialAction, description: '"안전계좌로 이체" 표현 감지'),
+    Indicator(type: IndicatorType.urgency, description: '"즉시·정지" 등 불안 유도'),
+  ],
+  urls: const [],
+  recommendedActions: const [],
+  analyzedAt: null,
+);
+
+/// 5 · 문자 탐지 결과 (3중 스코어 게이지).
 class ResultScreen extends StatefulWidget {
-  const ResultScreen({super.key});
+  /// 분석 결과. null이면 데모 데이터로 렌더(오버레이 dev 프리뷰 호환).
+  final AnalysisResult? result;
+
+  /// 검사한 원문(수동 분석). 있으면 "받은 문자" 카드에 표시.
+  final String? messageText;
+
+  const ResultScreen({super.key, this.result, this.messageText});
   @override
   State<ResultScreen> createState() => _ResultScreenState();
 }
@@ -52,48 +98,45 @@ class ResultScreen extends StatefulWidget {
 class _ResultScreenState extends State<ResultScreen> {
   bool _open = true;
 
+  AnalysisResult get _r => widget.result ?? _demoResult;
+
   @override
   Widget build(BuildContext context) {
+    final r = _r;
+    final level = r.riskLevel;
     return Scaffold(
       appBar: _resultBar(context, '분석 결과'),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(18, 10, 18, 24),
         children: [
-          Column(children: const [
-            CharacterDisc(142),
-            SizedBox(height: 12),
-            RiskBadge(RiskLevel.high),
-            SizedBox(height: 12),
-            Text('검찰 사칭 문자예요', style: AppText.titleResult),
+          Column(children: [
+            const CharacterDisc(142),
+            const SizedBox(height: 12),
+            RiskBadge(level),
+            const SizedBox(height: 12),
+            Text(_resultTitle(r), style: AppText.titleResult),
           ]),
-          const SizedBox(height: 12),
-          _listenBtn(),
           const SizedBox(height: 16),
-          SfCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
-                SectionLabel('왜 위험한가요?'),
-                Text('기관을 사칭해 겁을 주고, 안전계좌로 송금을 유도하는 수법이에요. 절대 응하지 마세요.',
-                    style: AppText.body),
-              ],
+          // 3중 스코어 게이지
+          Center(child: ScoreGauge(r.riskScore, level)),
+          const SizedBox(height: 8),
+          if (r.explanation.isNotEmpty) ...[
+            SfCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SectionLabel('왜 이렇게 판단했나요?'),
+                  Text(r.explanation, style: AppText.body),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(height: 12),
-          SfCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
-                SectionLabel('받은 문자 · 개인정보 가림'),
-                Text('[성명] 님, 귀하의 계좌가 정지되었습니다. 확인: http://****',
-                    style: TextStyle(fontSize: 15, color: AppColors.t2, height: 1.55)),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          // 점수 + 탐지 신호 (3막대 대체)
+            const SizedBox(height: 12),
+          ],
+          // 3중 스코어 breakdown (문맥·링크·글자 패턴)
           Container(
-            decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(14)),
+            decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(14)),
             padding: const EdgeInsets.all(16),
             child: Column(
               children: [
@@ -102,61 +145,129 @@ class _ResultScreenState extends State<ResultScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Row(children: [
-                        Container(
-                          width: 44, height: 44,
-                          decoration: const BoxDecoration(color: Color(0xFFFBE3E3), shape: BoxShape.circle),
-                          alignment: Alignment.center,
-                          child: const Text('92',
-                              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.high)),
-                        ),
-                        const SizedBox(width: 10),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: const [
-                            Text('위험 점수 92', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-                            Text('AI가 잡아낸 신호 3가지', style: TextStyle(fontSize: 13, color: AppColors.t2)),
-                          ],
-                        ),
-                      ]),
-                      Icon(_open ? Icons.expand_less : Icons.expand_more, color: AppColors.t2),
+                      const Text('점수는 이렇게 나왔어요',
+                          style: TextStyle(
+                              fontSize: 15, fontWeight: FontWeight.w600)),
+                      Icon(_open ? Icons.expand_less : Icons.expand_more,
+                          color: AppColors.t2),
                     ],
                   ),
                 ),
                 if (_open) ...[
                   const SizedBox(height: 14),
-                  for (final s in sampleSignals)
+                  BreakdownBar('문맥 분석 (AI)', r.scoreBreakdown.llmScore),
+                  BreakdownBar('링크 보안', r.scoreBreakdown.urlScore),
+                  BreakdownBar('글자 패턴', r.scoreBreakdown.patternScore),
+                  const Divider(color: AppColors.line, height: 12),
+                  const Text('세 가지 분석을 합쳐 종합 위험 점수를 계산했어요.',
+                      style: TextStyle(
+                          fontSize: 12, color: AppColors.t3, height: 1.5)),
+                ],
+              ],
+            ),
+          ),
+          // 위험 근거
+          if (r.indicators.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            SfCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SectionLabel('이런 신호가 잡혔어요'),
+                  for (final ind in r.indicators)
                     Padding(
-                      padding: const EdgeInsets.only(bottom: 9),
+                      padding: const EdgeInsets.only(top: 9),
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Icon(s.icon, color: AppColors.high, size: 20),
+                          Icon(_indicatorIcon(ind.type),
+                              color: level.color, size: 20),
                           const SizedBox(width: 9),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(s.label, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-                                Text(s.detail, style: const TextStyle(fontSize: 12, color: AppColors.t2)),
+                                if (ind.type != null)
+                                  Text(ind.type!.label,
+                                      style: const TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600)),
+                                Text(ind.description,
+                                    style: const TextStyle(
+                                        fontSize: 13, color: AppColors.t2)),
                               ],
                             ),
                           ),
                         ],
                       ),
                     ),
-                  const Divider(color: AppColors.line, height: 20),
-                  const Text('세이프팸 자체 분류 모델(나이브베이즈)이 문맥과 신호를 함께 분석했어요.',
-                      style: TextStyle(fontSize: 12, color: AppColors.t3, height: 1.5)),
                 ],
-              ],
+              ),
             ),
-          ),
-          const SizedBox(height: 12),
-          _helpCard(context),
+          ],
+          // 문자에 포함된 URL
+          if (r.urls.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            SfCard(
+              kind: CardKind.danger,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SectionLabel('문자 속 링크'),
+                  for (final u in r.urls)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Row(
+                        children: [
+                          Icon(
+                              u.suspicious
+                                  ? Icons.gpp_bad_outlined
+                                  : Icons.link,
+                              color: u.suspicious
+                                  ? AppColors.high
+                                  : AppColors.t2,
+                              size: 20),
+                          const SizedBox(width: 9),
+                          Expanded(
+                            child: Text(u.resolvedUrl ?? u.originalUrl,
+                                style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: u.suspicious
+                                        ? AppColors.highText
+                                        : AppColors.t1)),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+          // 받은 문자(수동 검사 시 원문)
+          if (widget.messageText != null &&
+              widget.messageText!.trim().isNotEmpty) ...[
+            const SizedBox(height: 12),
+            SfCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SectionLabel('받은 문자'),
+                  Text(widget.messageText!.trim(),
+                      style: const TextStyle(
+                          fontSize: 15, color: AppColors.t2, height: 1.55)),
+                ],
+              ),
+            ),
+          ],
+          if (level != RiskLevel.low) ...[
+            const SizedBox(height: 12),
+            _helpCard(context),
+          ],
           const SizedBox(height: 12),
           SfButton('대응 방법 물어보기',
-              icon: Icons.smart_toy_outlined, onTap: () => showChatbotSheet(context)),
+              icon: Icons.smart_toy_outlined,
+              onTap: () => showChatbotSheet(context)),
         ],
       ),
     );
