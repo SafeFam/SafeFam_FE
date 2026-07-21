@@ -36,19 +36,6 @@ class Signal {
   const Signal(this.icon, this.title, this.desc);
 }
 
-class DetectionItem {
-  final String title;
-  final String sub;
-  final RiskLevel level;
-  const DetectionItem(this.title, this.sub, this.level);
-}
-
-const sampleHistory = <DetectionItem>[
-  DetectionItem('검찰 사칭', '10-****-2841', RiskLevel.high),
-  DetectionItem('택배 사칭', '미수령 안내 링크', RiskLevel.med),
-  DetectionItem('국민은행', '출금 알림', RiskLevel.low),
-];
-
 const sampleTrends = <(String, RiskLevel, String)>[
   ('택배·배송 사칭', RiskLevel.high, '많음'),
   ('검찰·금감원 사칭', RiskLevel.med, '주의'),
