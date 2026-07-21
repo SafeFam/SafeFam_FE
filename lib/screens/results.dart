@@ -100,13 +100,14 @@ Widget _actionsCard(BuildContext c, List<RecommendedAction> actions) => SfCard(
     );
 
 Widget _actionTile(BuildContext c, RecommendedAction a) {
-  final phone = a.phoneNumber;
-  final url = a.url;
-  if (phone != null && phone.isNotEmpty) {
+  // 공백만 있는 백엔드 값은 없는 것으로 간주(트림 후 판단).
+  final phone = a.phoneNumber?.trim() ?? '';
+  final url = a.url?.trim() ?? '';
+  if (phone.isNotEmpty) {
     return SfButton(a.label,
         icon: Icons.phone, compact: true, onTap: () => _dial(c, phone));
   }
-  if (url != null && url.isNotEmpty) {
+  if (url.isNotEmpty) {
     return SfButton(a.label,
         icon: Icons.open_in_new,
         variant: SfBtn.ghost,
