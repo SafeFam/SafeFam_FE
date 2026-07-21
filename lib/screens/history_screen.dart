@@ -24,6 +24,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
   bool _historyLoading = true;
   bool _historyError = false;
 
+  // 늦게 도착한 이전 요청이 최신 상태를 덮어쓰지 않도록 하는 요청 식별자.
+  int _statsRequestId = 0;
+  int _historyRequestId = 0;
+
   @override
   void initState() {
     super.initState();
@@ -32,9 +36,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   Future<void> _loadStats() async {
+    final requestId = ++_statsRequestId;
+    final period = _period;
     setState(() => _statsLoading = true);
-    final s = await AnalysisApi.getStatistics(period: _period);
-    if (!mounted) return;
+    final s = await AnalysisApi.getStatistics(period: period);
+    if (!mounted || requestId != _statsRequestId) return;
     setState(() {
       _stats = s;
       _statsLoading = false;
@@ -42,12 +48,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   Future<void> _loadHistory() async {
+    final requestId = ++_historyRequestId;
+    final filter = _filter;
     setState(() {
       _historyLoading = true;
       _historyError = false;
     });
-    final page = await AnalysisApi.getHistory(category: _filter);
-    if (!mounted) return;
+    final page = await AnalysisApi.getHistory(category: filter);
+    if (!mounted || requestId != _historyRequestId) return;
     setState(() {
       _page = page;
       _historyError = page == null;
