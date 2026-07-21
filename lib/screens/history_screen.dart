@@ -49,6 +49,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
           child: RefreshIndicator(
             onRefresh: _load,
             child: ListView(
+              // 로딩·에러·빈 상태가 뷰포트보다 짧아도 당겨서 새로고침이 되도록.
+              physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.fromLTRB(18, 2, 18, 18),
               children: [
                 _monthlyChart(),
