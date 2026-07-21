@@ -4,7 +4,28 @@ import '../widgets/common.dart';
 import '../widgets/score_gauge.dart';
 import '../models.dart';
 import '../services/analysis_api.dart';
+import '../util/launchers.dart';
 import '../sheets.dart';
+
+/// 전화 걸기 side-effect. 실패 시 안내 스낵바.
+Future<void> _dial(BuildContext c, String number) async {
+  final ok = await callNumber(number);
+  if (!ok && c.mounted) {
+    ScaffoldMessenger.of(c)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text('전화를 걸 수 없어요 ($number)')));
+  }
+}
+
+/// 링크 열기 side-effect. 실패 시 안내 스낵바.
+Future<void> _open(BuildContext c, String url) async {
+  final ok = await openLink(url);
+  if (!ok && c.mounted) {
+    ScaffoldMessenger.of(c)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(const SnackBar(content: Text('링크를 열 수 없어요')));
+  }
+}
 
 PreferredSizeWidget _resultBar(BuildContext c, String title,
     {bool share = true, VoidCallback? onDelete}) {
@@ -41,14 +62,69 @@ Widget _helpCard(BuildContext c) => SfCard(
           const Text('바로 도움받기',
               style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.highText)),
           const SizedBox(height: 11),
-          Row(children: const [
-            Expanded(child: SfButton('금감원 1332', icon: Icons.phone, variant: SfBtn.primary, compact: true)),
-            SizedBox(width: 9),
-            Expanded(child: SfButton('경찰 112', icon: Icons.phone, variant: SfBtn.ghost, compact: true)),
+          Row(children: [
+            Expanded(
+                child: SfButton('금감원 1332',
+                    icon: Icons.phone,
+                    variant: SfBtn.primary,
+                    compact: true,
+                    onTap: () => _dial(c, '1332'))),
+            const SizedBox(width: 9),
+            Expanded(
+                child: SfButton('경찰 112',
+                    icon: Icons.phone,
+                    variant: SfBtn.ghost,
+                    compact: true,
+                    onTap: () => _dial(c, '112'))),
           ]),
         ],
       ),
     );
+
+/// 백엔드가 준 대응 액션(recommendedActions)을 전화/링크 버튼으로 렌더.
+Widget _actionsCard(BuildContext c, List<RecommendedAction> actions) => SfCard(
+      kind: CardKind.danger,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('이렇게 대응하세요',
+              style: TextStyle(
+                  fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.highText)),
+          for (final a in actions)
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: _actionTile(c, a),
+            ),
+        ],
+      ),
+    );
+
+Widget _actionTile(BuildContext c, RecommendedAction a) {
+  final phone = a.phoneNumber;
+  final url = a.url;
+  if (phone != null && phone.isNotEmpty) {
+    return SfButton(a.label,
+        icon: Icons.phone, compact: true, onTap: () => _dial(c, phone));
+  }
+  if (url != null && url.isNotEmpty) {
+    return SfButton(a.label,
+        icon: Icons.open_in_new,
+        variant: SfBtn.ghost,
+        compact: true,
+        onTap: () => _open(c, url));
+  }
+  // 연락처·링크 없는 안내성 항목은 텍스트로.
+  return Row(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      const Icon(Icons.check_circle_outline, size: 20, color: AppColors.highText),
+      const SizedBox(width: 8),
+      Expanded(
+          child: Text(a.label,
+              style: const TextStyle(fontSize: 15, color: AppColors.t1))),
+    ],
+  );
+}
 
 /// IndicatorType별 아이콘 매핑(위험 근거 리스트 좌측).
 IconData _indicatorIcon(IndicatorType? t) => switch (t) {
@@ -319,7 +395,10 @@ class _ResultScreenState extends State<ResultScreen> {
               ),
             ),
           ],
-          if (level != RiskLevel.low) ...[
+          if (r.recommendedActions.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _actionsCard(context, r.recommendedActions),
+          ] else if (level != RiskLevel.low) ...[
             const SizedBox(height: 12),
             _helpCard(context),
           ],
