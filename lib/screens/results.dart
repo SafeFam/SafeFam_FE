@@ -134,7 +134,7 @@ class _ResultScreenState extends State<ResultScreen> {
         ],
       ),
     );
-    if (ok != true || _busy) return;
+    if (ok != true || _busy || !mounted) return;
     setState(() => _busy = true);
     final done = await AnalysisApi.deleteAnalysis(_r.analysisId);
     if (!mounted) return;
@@ -164,7 +164,7 @@ class _ResultScreenState extends State<ResultScreen> {
     final level = r.riskLevel;
     return Scaffold(
       appBar: _resultBar(context, '분석 결과',
-          onDelete: _isSaved ? _confirmDelete : null),
+          onDelete: _isSaved && !_busy ? _confirmDelete : null),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(18, 10, 18, 24),
         children: [
