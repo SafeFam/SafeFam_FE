@@ -41,9 +41,10 @@ lib/
     family_flow.dart   가족 등록 · 초대코드 · 연결 · 이름 설정
     home_screen.dart   홈(톱니→설정)
     check_screen.dart  검사 탭(수동 분석 → analyses API 호출)
-    results.dart       결과(3중 스코어 게이지)·보이스피싱·URL
+    results.dart       결과(3중 스코어 게이지)·보이스피싱·URL + AnalysisDetailScreen(이력 상세·삭제·피드백)
     overlay_alert.dart 강제 오버레이 경고
-    history_screen.dart / family_screen.dart / more_screen.dart(설정)
+    history_screen.dart 이력(목록·통계·유형 필터·상세 이동)
+    family_screen.dart / more_screen.dart(설정)
   services/
     auth_api.dart      인증 API — 가입·로그인·로그아웃 + 마이페이지 users/me·설정 users/me/settings
     analysis_api.dart  문자 분석 API — 분석·이력·상세·삭제·피드백·통계(analyses·statistics)
