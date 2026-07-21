@@ -6,7 +6,8 @@ import '../models.dart';
 import '../services/analysis_api.dart';
 import '../sheets.dart';
 
-PreferredSizeWidget _resultBar(BuildContext c, String title, {bool share = true}) {
+PreferredSizeWidget _resultBar(BuildContext c, String title,
+    {bool share = true, VoidCallback? onDelete}) {
   return AppBar(
     backgroundColor: Colors.white,
     surfaceTintColor: Colors.white,
@@ -20,6 +21,11 @@ PreferredSizeWidget _resultBar(BuildContext c, String title, {bool share = true}
         IconButton(
             onPressed: () => showShareSheet(c),
             icon: const Icon(Icons.ios_share, color: AppColors.t1, size: 22)),
+      if (onDelete != null)
+        IconButton(
+            tooltip: '이력 삭제',
+            onPressed: onDelete,
+            icon: const Icon(Icons.delete_outline, color: AppColors.t1, size: 22)),
     ],
   );
 }
@@ -97,15 +103,68 @@ class ResultScreen extends StatefulWidget {
 
 class _ResultScreenState extends State<ResultScreen> {
   bool _open = true;
+  FeedbackType? _feedback; // 사용자가 남긴 피드백(선택 강조용)
+  bool _busy = false; // 삭제/피드백 전송 중
 
   AnalysisResult get _r => widget.result ?? _demoResult;
+
+  /// 서버에 저장된 이력(analysisId>0)이면 삭제·피드백을 노출한다.
+  bool get _isSaved => (widget.result?.analysisId ?? 0) > 0;
+
+  void _snack(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  Future<void> _confirmDelete() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dc) => AlertDialog(
+        title: const Text('이력을 삭제할까요?'),
+        content: const Text('삭제하면 이 분석 결과를 다시 볼 수 없어요.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(dc, false),
+              child: const Text('취소')),
+          TextButton(
+              onPressed: () => Navigator.pop(dc, true),
+              child: const Text('삭제', style: TextStyle(color: AppColors.high))),
+        ],
+      ),
+    );
+    if (ok != true || _busy || !mounted) return;
+    setState(() => _busy = true);
+    final done = await AnalysisApi.deleteAnalysis(_r.analysisId);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (done) {
+      Navigator.pop(context, true); // 호출부(이력)에 삭제됨을 알림
+    } else {
+      _snack('삭제에 실패했어요. 잠시 후 다시 시도해 주세요.');
+    }
+  }
+
+  Future<void> _sendFeedback(FeedbackType type) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    final ok = await AnalysisApi.submitFeedback(_r.analysisId, type: type);
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      if (ok) _feedback = type;
+    });
+    _snack(ok ? '피드백 고마워요. 탐지 정확도를 높이는 데 쓸게요.' : '피드백 전송에 실패했어요.');
+  }
 
   @override
   Widget build(BuildContext context) {
     final r = _r;
     final level = r.riskLevel;
     return Scaffold(
-      appBar: _resultBar(context, '분석 결과'),
+      appBar: _resultBar(context, '분석 결과',
+          onDelete: _isSaved && !_busy ? _confirmDelete : null),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(18, 10, 18, 24),
         children: [
@@ -264,11 +323,129 @@ class _ResultScreenState extends State<ResultScreen> {
             const SizedBox(height: 12),
             _helpCard(context),
           ],
+          if (_isSaved) ...[
+            const SizedBox(height: 12),
+            _feedbackCard(),
+          ],
           const SizedBox(height: 12),
           SfButton('대응 방법 물어보기',
               icon: Icons.smart_toy_outlined,
               onTap: () => showChatbotSheet(context)),
         ],
+      ),
+    );
+  }
+
+  /// 정탐/오탐/미탐 피드백 카드(저장된 이력에서만 표시).
+  Widget _feedbackCard() {
+    return SfCard(
+      kind: CardKind.tint,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SectionLabel('이 분석이 정확했나요?'),
+          const Text('알려주시면 탐지 정확도를 높이는 데 써요.',
+              style: AppText.caption),
+          const SizedBox(height: 11),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _feedbackOption('정확해요', FeedbackType.correct),
+              _feedbackOption('실제로는 안전했어요', FeedbackType.falsePositive),
+              _feedbackOption('실제로는 위험했어요', FeedbackType.falseNegative),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _feedbackOption(String label, FeedbackType type) {
+    final selected = _feedback == type;
+    return InkWell(
+      borderRadius: BorderRadius.circular(22),
+      onTap: _busy ? null : () => _sendFeedback(type),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.blue : Colors.white,
+          border: Border.all(
+              color: selected ? AppColors.blue : AppColors.line, width: 1.5),
+          borderRadius: BorderRadius.circular(22),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (selected) ...[
+              const Icon(Icons.check, size: 16, color: Colors.white),
+              const SizedBox(width: 5),
+            ],
+            Text(label,
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: selected ? Colors.white : AppColors.t2)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 6 · 탐지 이력 상세 — id로 분석 결과를 불러와 [ResultScreen]으로 렌더.
+class AnalysisDetailScreen extends StatefulWidget {
+  final int analysisId;
+  const AnalysisDetailScreen({super.key, required this.analysisId});
+  @override
+  State<AnalysisDetailScreen> createState() => _AnalysisDetailScreenState();
+}
+
+class _AnalysisDetailScreenState extends State<AnalysisDetailScreen> {
+  AnalysisResult? _result;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    final r = await AnalysisApi.getAnalysis(widget.analysisId);
+    if (!mounted) return;
+    setState(() {
+      _loading = false;
+      _result = r;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_result != null) return ResultScreen(result: _result);
+    return Scaffold(
+      appBar: _resultBar(context, '분석 결과', share: false),
+      body: Center(
+        child: _loading
+            ? const CircularProgressIndicator()
+            : Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.cloud_off_outlined,
+                      color: AppColors.t3, size: 40),
+                  const SizedBox(height: 10),
+                  const Text('결과를 불러오지 못했어요', style: AppText.body),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: 160,
+                    child: SfButton('다시 시도',
+                        icon: Icons.refresh,
+                        variant: SfBtn.ghost,
+                        onTap: _load),
+                  ),
+                ],
+              ),
       ),
     );
   }

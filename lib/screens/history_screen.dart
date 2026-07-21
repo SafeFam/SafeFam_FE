@@ -3,6 +3,7 @@ import '../theme/app_theme.dart';
 import '../widgets/common.dart';
 import '../models.dart';
 import '../services/analysis_api.dart';
+import 'results.dart';
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
@@ -127,6 +128,16 @@ class _HistoryScreenState extends State<HistoryScreen> {
     return [for (final item in items) _historyTile(item)];
   }
 
+  /// 항목 탭 → 상세로 이동. 상세에서 삭제하고 돌아오면 목록을 새로고침한다.
+  Future<void> _openDetail(AnalysisListItem item) async {
+    final deleted = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+          builder: (_) => AnalysisDetailScreen(analysisId: item.analysisId)),
+    );
+    if (deleted == true && mounted) _load();
+  }
+
   Widget _historyTile(AnalysisListItem item) {
     final level = item.riskLevel;
     final title = item.category?.label ?? '문자 분석';
@@ -134,49 +145,55 @@ class _HistoryScreenState extends State<HistoryScreen> {
       if (item.maskedSender.isNotEmpty) item.maskedSender,
       if (item.analyzedAt != null) _formatDate(item.analyzedAt!),
     ];
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 15),
-      decoration: const BoxDecoration(
-          border: Border(bottom: BorderSide(color: AppColors.line))),
-      child: Row(
-        children: [
-          IconDisc(level.icon,
-              color: level.color, bg: level.color.withOpacity(0.12)),
-          const SizedBox(width: 13),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Text(title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                              fontSize: 16, fontWeight: FontWeight.w600)),
-                    ),
-                    const SizedBox(width: 8),
-                    RiskBadge(level, large: false),
+    return InkWell(
+      onTap: () => _openDetail(item),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 15),
+        decoration: const BoxDecoration(
+            border: Border(bottom: BorderSide(color: AppColors.line))),
+        child: Row(
+          children: [
+            IconDisc(level.icon,
+                color: level.color, bg: level.color.withOpacity(0.12)),
+            const SizedBox(width: 13),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontSize: 16, fontWeight: FontWeight.w600)),
+                      ),
+                      const SizedBox(width: 8),
+                      RiskBadge(level, large: false),
+                    ],
+                  ),
+                  if (item.messagePreview.isNotEmpty) ...[
+                    const SizedBox(height: 3),
+                    Text(item.messagePreview,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppText.caption),
                   ],
-                ),
-                if (item.messagePreview.isNotEmpty) ...[
-                  const SizedBox(height: 3),
-                  Text(item.messagePreview,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppText.caption),
+                  if (metaParts.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(metaParts.join(' · '),
+                        style:
+                            const TextStyle(fontSize: 12, color: AppColors.t3)),
+                  ],
                 ],
-                if (metaParts.isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Text(metaParts.join(' · '),
-                      style: const TextStyle(fontSize: 12, color: AppColors.t3)),
-                ],
-              ],
+              ),
             ),
-          ),
-        ],
+            const SizedBox(width: 6),
+            const Icon(Icons.chevron_right, color: AppColors.t3, size: 22),
+          ],
+        ),
       ),
     );
   }
