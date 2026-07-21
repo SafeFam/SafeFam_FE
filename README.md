@@ -59,7 +59,8 @@ assets/character.png
 - ✅ 탐지·알림 설정 `users/me/settings` 연동 완료 — `GET`·`PATCH`(`autoAnalysisEnabled`·`pushEnabled` 토글, 전달한 필드만 부분 수정)
 - ✅ 문자 분석 API 연동 완료 — 검사 탭 수동 분석 → `analyses` 호출 → 결과 화면 **3중 스코어 게이지**(`AnalysisResult`) 바인딩 (`analysis_api.dart`)
 - ✅ 이력 화면(`history_screen`) `getHistory()` 바인딩 완료 — 로딩·빈·에러·당겨서 새로고침 (PR #40)
-- 통계 그래프에 `getStatistics()` 바인딩 (백엔드 준비 완료 — 다음 작업)
+- ✅ 이력 상세·삭제·피드백 완료 — 항목 탭 → `AnalysisDetailScreen`(`getAnalysis`) → 결과 화면 재사용, 삭제·정탐/오탐/미탐 피드백 (PR #42)
+- ✅ 탐지 통계 + 이력 필터 완료 — `getStatistics(period)` 기간별 총계·위험등급/유형 분포, `PhishingCategory` 필터 칩 (PR #44)
 - 회원가입/재설정 인증문자는 실제 SMS(Solapi) 발송이라 서버 SMS 설정 + 실제 수신 가능한 번호 필요
 - 전화(`url_launcher`)·공유(`share_plus`)
 - 자동 탐지 권한·오버레이 실제 구현(검증 후) · FCM(타 멤버 담당) · 상태관리(Provider/Riverpod)
