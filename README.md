@@ -26,7 +26,7 @@
 - 개발용 http 평문 통신은 **디버그 빌드에만** 허용(`android/app/src/debug` network security config). 릴리스는 https 강제.
 
 ## 구조
-```
+```text
 lib/
   main.dart / theme/app_theme.dart / models.dart(위험도)
   widgets/ (common · score_gauge · main_scaffold[홈·이력·가족·검사])
@@ -58,7 +58,8 @@ assets/character.png
 - ✅ 마이페이지 `users/me` 연동 완료 — `GET`(조회)·`PATCH`(이름 수정)·`DELETE`(회원 탈퇴, 비밀번호 재확인)
 - ✅ 탐지·알림 설정 `users/me/settings` 연동 완료 — `GET`·`PATCH`(`autoAnalysisEnabled`·`pushEnabled` 토글, 전달한 필드만 부분 수정)
 - ✅ 문자 분석 API 연동 완료 — 검사 탭 수동 분석 → `analyses` 호출 → 결과 화면 **3중 스코어 게이지**(`AnalysisResult`) 바인딩 (`analysis_api.dart`)
-- 이력 화면(`history_screen`)에 `getHistory()`·통계 그래프에 `getStatistics()` 바인딩 (백엔드 준비 완료 — 다음 작업)
+- ✅ 이력 화면(`history_screen`) `getHistory()` 바인딩 완료 — 로딩·빈·에러·당겨서 새로고침 (PR #40)
+- 통계 그래프에 `getStatistics()` 바인딩 (백엔드 준비 완료 — 다음 작업)
 - 회원가입/재설정 인증문자는 실제 SMS(Solapi) 발송이라 서버 SMS 설정 + 실제 수신 가능한 번호 필요
 - 전화(`url_launcher`)·공유(`share_plus`)
 - 자동 탐지 권한·오버레이 실제 구현(검증 후) · FCM(타 멤버 담당) · 상태관리(Provider/Riverpod)
