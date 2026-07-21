@@ -277,7 +277,8 @@ enum IndicatorType {
 }
 
 /// 백엔드 RiskLevel(HIGH/MEDIUM/LOW) → 프론트 [RiskLevel](high/med/low) 매핑.
-/// 알 수 없는 값은 안전 기본값(low)으로 수렴시킨다.
+/// 알 수 없는/손상된 값은 과소평가보다 과대평가가 안전하므로 high로 수렴시킨다
+/// (fail-secure — 피싱 경고를 놓치지 않게).
 RiskLevel riskLevelFromWire(String? v) {
   switch (v) {
     case 'HIGH':
@@ -285,8 +286,9 @@ RiskLevel riskLevelFromWire(String? v) {
     case 'MEDIUM':
       return RiskLevel.med;
     case 'LOW':
-    default:
       return RiskLevel.low;
+    default:
+      return RiskLevel.high;
   }
 }
 
@@ -300,6 +302,18 @@ extension RiskLevelWire on RiskLevel {
 }
 
 // ─────────────────────────── 응답 모델 ───────────────────────────
+
+/// JSON의 [key] 배열을 방어적으로 파싱한다. 배열이 아니거나 없으면 빈 리스트,
+/// Map이 아닌 원소는 걸러낸다. 여러 fromJson에서 공유.
+List<T> _parseList<T>(
+  Map<String, dynamic> j,
+  String key,
+  T Function(Map<String, dynamic>) f,
+) {
+  final raw = j[key];
+  if (raw is! List) return const [];
+  return raw.whereType<Map<String, dynamic>>().map(f).toList(growable: false);
+}
 
 /// 탐지 계층별 점수(3중 스코어 게이지 breakdown용). 규칙 기반 현재 llm=0.
 class ScoreBreakdown {
@@ -345,7 +359,8 @@ class UrlThreat {
   factory UrlThreat.fromJson(Map<String, dynamic> j) => UrlThreat(
         originalUrl: (j['originalUrl'] as String?) ?? '',
         resolvedUrl: j['resolvedUrl'] as String?,
-        suspicious: j['suspicious'] as bool? ?? false,
+        // 누락/손상 시 안전하게 '의심'으로 간주(fail-secure).
+        suspicious: j['suspicious'] as bool? ?? true,
       );
 }
 
@@ -398,15 +413,6 @@ class AnalysisResult {
   });
 
   factory AnalysisResult.fromJson(Map<String, dynamic> j) {
-    List<T> list<T>(String key, T Function(Map<String, dynamic>) f) {
-      final raw = j[key];
-      if (raw is! List) return const [];
-      return raw
-          .whereType<Map<String, dynamic>>()
-          .map(f)
-          .toList(growable: false);
-    }
-
     final breakdown = j['scoreBreakdown'];
     final analyzed = j['analyzedAt'];
     return AnalysisResult(
@@ -418,9 +424,10 @@ class AnalysisResult {
       scoreBreakdown: breakdown is Map<String, dynamic>
           ? ScoreBreakdown.fromJson(breakdown)
           : const ScoreBreakdown(llmScore: 0, urlScore: 0, patternScore: 0),
-      indicators: list('indicators', Indicator.fromJson),
-      urls: list('urls', UrlThreat.fromJson),
-      recommendedActions: list('recommendedActions', RecommendedAction.fromJson),
+      indicators: _parseList(j, 'indicators', Indicator.fromJson),
+      urls: _parseList(j, 'urls', UrlThreat.fromJson),
+      recommendedActions:
+          _parseList(j, 'recommendedActions', RecommendedAction.fromJson),
       analyzedAt: analyzed is String ? DateTime.tryParse(analyzed) : null,
     );
   }
@@ -479,13 +486,7 @@ class AnalysisPage {
   });
 
   factory AnalysisPage.fromJson(Map<String, dynamic> j) {
-    final raw = j['content'];
-    final items = raw is List
-        ? raw
-            .whereType<Map<String, dynamic>>()
-            .map(AnalysisListItem.fromJson)
-            .toList(growable: false)
-        : <AnalysisListItem>[];
+    final items = _parseList(j, 'content', AnalysisListItem.fromJson);
     return AnalysisPage(
       content: items,
       page: (j['page'] as num?)?.toInt() ?? 0,
@@ -536,20 +537,12 @@ class StatisticsOverview {
   });
 
   factory StatisticsOverview.fromJson(Map<String, dynamic> j) {
-    List<T> list<T>(String key, T Function(Map<String, dynamic>) f) {
-      final raw = j[key];
-      if (raw is! List) return const [];
-      return raw
-          .whereType<Map<String, dynamic>>()
-          .map(f)
-          .toList(growable: false);
-    }
-
     return StatisticsOverview(
       totalAnalysisCount: (j['totalAnalysisCount'] as num?)?.toInt() ?? 0,
       highRiskCount: (j['highRiskCount'] as num?)?.toInt() ?? 0,
-      riskDistribution: list('riskDistribution', RiskBucket.fromJson),
-      categoryDistribution: list('categoryDistribution', CategoryBucket.fromJson),
+      riskDistribution: _parseList(j, 'riskDistribution', RiskBucket.fromJson),
+      categoryDistribution:
+          _parseList(j, 'categoryDistribution', CategoryBucket.fromJson),
     );
   }
 }
