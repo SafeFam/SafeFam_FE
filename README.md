@@ -4,7 +4,7 @@
 
 ## 흐름
 (스플래시 → 온보딩) → **로그인**(휴대폰 번호 + 비밀번호 · 카카오 · 구글) → 신규는 **회원가입**(휴대폰 인증 요청→확인 → 닉네임 + 비밀번호) → **가족 등록**(보호자/피보호자) → 보호자는 초대 코드 발급 → 연결 후 이름 설정 / 피보호자는 코드 입력 → 메인.
-> 진입점은 현재 `LoginScreen`. 로그인 화면의 '비밀번호를 잊으셨나요?' → **비밀번호 재설정**(휴대폰 인증 → 새 비밀번호). **카카오로 계속하기** → 카카오 로그인, 신규회원이면 **카카오 온보딩**(휴대폰 인증 → 이름)으로 가입 후 가족 등록. 스플래시·온보딩은 아직 앞단에 연결 전(별도 작업 예정).
+> 진입점은 현재 `LoginScreen`. 로그인 화면의 '비밀번호를 잊으셨나요?' → **비밀번호 재설정**(휴대폰 인증 → 새 비밀번호). 로그인 실패 누적으로 **계정이 잠기면** 안내 후 **계정 잠금 해제**(휴대폰 인증 → `POST /auth/unlock`)로 풀 수 있음. **카카오로 계속하기** → 카카오 로그인, 신규회원이면 **카카오 온보딩**(휴대폰 인증 → 이름)으로 가입 후 가족 등록. 스플래시·온보딩은 아직 앞단에 연결 전(별도 작업 예정).
 > 카카오 로그인은 빌드 시 앱 키 주입 필요: `flutter run --dart-define=KAKAO_NATIVE_APP_KEY=<네이티브 앱 키>` (AndroidManifest의 리다이렉트 스킴 값과 동일해야 함).
 
 메인 하단 탭 **홈 · 이력 · 가족 · 검사** (설정=더보기는 홈 우상단 톱니바퀴로 진입).
@@ -36,6 +36,7 @@ lib/
     login_screen.dart  로그인(휴대폰+비밀번호 · 회원가입 · 비밀번호 재설정 · 카카오 · 구글)
     signup_screen.dart 회원가입(휴대폰 인증 → 닉네임+비밀번호)
     reset_password_screen.dart 비밀번호 재설정(휴대폰 인증 → 새 비밀번호)
+    unlock_account_screen.dart 계정 잠금 해제(휴대폰 인증 → auth/unlock)
     kakao_onboarding_screen.dart 카카오 신규회원 온보딩(카카오 로그인 → 휴대폰 인증+이름)
     mypage_screen.dart 마이페이지(내 정보 조회·이름 수정·로그아웃·회원 탈퇴)
     family_flow.dart   가족 등록 · 초대코드 · 연결 · 이름 설정
@@ -46,8 +47,9 @@ lib/
     history_screen.dart 이력(목록·통계·유형 필터·상세 이동)
     family_screen.dart / more_screen.dart(설정)
   services/
-    auth_api.dart      인증 API — 가입·로그인·로그아웃 + 마이페이지 users/me·설정 users/me/settings
+    auth_api.dart      인증 API — 가입·로그인·로그아웃·잠금해제 + 마이페이지 users/me·설정 users/me/settings
     analysis_api.dart  문자 분석 API — 분석·이력·상세·삭제·피드백·통계(analyses·statistics)
+  util/launchers.dart  전화(tel)·링크 딥링크 헬퍼(url_launcher)
   sheets.dart          챗봇·신고·공유
 assets/character.png
 ```
@@ -62,7 +64,10 @@ assets/character.png
 - ✅ 이력 화면(`history_screen`) `getHistory()` 바인딩 완료 — 로딩·빈·에러·당겨서 새로고침 (PR #40)
 - ✅ 이력 상세·삭제·피드백 완료 — 항목 탭 → `AnalysisDetailScreen`(`getAnalysis`) → 결과 화면 재사용, 삭제·정탐/오탐/미탐 피드백 (PR #42)
 - ✅ 탐지 통계 + 이력 필터 완료 — `getStatistics(period)` 기간별 총계·위험등급/유형 분포, `PhishingCategory` 필터 칩 (PR #44)
-- 회원가입/재설정 인증문자는 실제 SMS(Solapi) 발송이라 서버 SMS 설정 + 실제 수신 가능한 번호 필요
-- 전화(`url_launcher`)·공유(`share_plus`)
+- ✅ 전화·링크 딥링크 완료 — `url_launcher`로 `tel:`/외부 링크, 결과 화면 `recommendedActions`·긴급 연락처 버튼 연결 (PR #46)
+- ✅ 계정 잠금 해제 연동 완료 — 로그인 시 `ACCOUNT_LOCKED`(403) 감지 → 휴대폰 인증 후 `POST /auth/unlock` (PR #48)
+- 회원가입/재설정/잠금해제 인증문자는 실제 SMS(Solapi) 발송이라 서버 SMS 설정 + 실제 수신 가능한 번호 필요
+- 공유(`share_plus`)
 - 자동 탐지 권한·오버레이 실제 구현(검증 후) · FCM(타 멤버 담당) · 상태관리(Provider/Riverpod)
+- 가족 도메인·URL 검사 전용 백엔드는 아직 없음 → 해당 화면은 UI만(연동 대기)
 - 연결 예외(잘못된 코드·만료)는 시안엔 있으나 코드 미반영 → 추가 예정
