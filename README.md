@@ -71,3 +71,15 @@ assets/character.png
 - 자동 탐지 권한·오버레이 실제 구현(검증 후) · FCM(타 멤버 담당) · 상태관리(Provider/Riverpod)
 - 가족 도메인·URL 검사 전용 백엔드는 아직 없음 → 해당 화면은 UI만(연동 대기)
 - 연결 예외(잘못된 코드·만료)는 시안엔 있으나 코드 미반영 → 추가 예정
+
+## Firebase 설정 (FCM)
+FCM 관련 파일은 보안상 `.gitignore`로 관리합니다. 로컬에서 직접 생성이 필요합니다.
+
+1. [Firebase 콘솔](https://console.firebase.google.com)에서 SafeFam 프로젝트 접속
+2. 프로젝트 설정 → Android 앱 → `google-services.json` 다운로드 → `android/app/` 에 추가
+3. FlutterFire CLI 설치 및 설정:
+```bash
+   dart pub global activate flutterfire_cli
+   flutterfire configure --project=safefam-55bff
+```
+4. `lib/firebase_options.dart` 자동 생성 확인

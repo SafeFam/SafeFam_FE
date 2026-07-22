@@ -1,5 +1,7 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
+import 'firebase_options.dart';
 import 'theme/app_theme.dart';
 import 'screens/login_screen.dart';
 
@@ -7,6 +9,9 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   const nativeAppKey = String.fromEnvironment('KAKAO_NATIVE_APP_KEY');
   await KakaoSdk.init(nativeAppKey: nativeAppKey);
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   runApp(const SafeFamApp());
 }
 
