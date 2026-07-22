@@ -28,7 +28,7 @@ Future<void> _open(BuildContext c, String url) async {
 }
 
 PreferredSizeWidget _resultBar(BuildContext c, String title,
-    {bool share = true, VoidCallback? onDelete}) {
+    {bool share = true, VoidCallback? onDelete, AnalysisResult? result}) {
   return AppBar(
     backgroundColor: Colors.white,
     surfaceTintColor: Colors.white,
@@ -40,7 +40,7 @@ PreferredSizeWidget _resultBar(BuildContext c, String title,
     actions: [
       if (share)
         IconButton(
-            onPressed: () => showShareSheet(c),
+            onPressed: () => showShareSheet(c, result: result),
             icon: const Icon(Icons.ios_share, color: AppColors.t1, size: 22)),
       if (onDelete != null)
         IconButton(
@@ -241,7 +241,7 @@ class _ResultScreenState extends State<ResultScreen> {
     final level = r.riskLevel;
     return Scaffold(
       appBar: _resultBar(context, '분석 결과',
-          onDelete: _isSaved && !_busy ? _confirmDelete : null),
+          result: r, onDelete: _isSaved && !_busy ? _confirmDelete : null),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(18, 10, 18, 24),
         children: [

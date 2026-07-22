@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
-import '../models.dart' show RiskLevel;
+import '../models.dart' show RiskLevel, RiskMeta;
 import 'auth_api.dart' show AuthApi;
 
 /// 문자 분석·탐지 이력·통계 서버 통신 담당.
@@ -430,6 +430,18 @@ class AnalysisResult {
           _parseList(j, 'recommendedActions', RecommendedAction.fromJson),
       analyzedAt: analyzed is String ? DateTime.tryParse(analyzed) : null,
     );
+  }
+
+  /// 가족·지인에게 공유할 요약 텍스트.
+  /// ★원문(문자 내용)은 담지 않는다 — 위험도·유형·설명만 넣어 개인정보 노출을 피함.
+  String get shareSummary {
+    final b = StringBuffer('[세이프팸] 문자 분석 결과\n');
+    b.writeln('위험도: ${riskLevel.label} ($riskScore점)');
+    if (category != null) b.writeln('유형: ${category!.label}');
+    final ex = explanation.trim();
+    if (ex.isNotEmpty) b.writeln('\n$ex');
+    b.write('\n\n※ 세이프팸이 분석한 결과예요. 의심되면 링크·전화에 응하지 마세요.');
+    return b.toString();
   }
 }
 

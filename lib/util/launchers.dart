@@ -14,6 +14,16 @@ Future<bool> callNumber(String number) async {
   }
 }
 
+/// 문자(SMS) 앱을 본문이 채워진 채로 연다(수신번호 없음 → 사용자가 선택).
+Future<bool> shareBySms(String body) async {
+  final uri = Uri.parse('sms:?body=${Uri.encodeComponent(body)}');
+  try {
+    return await launchUrl(uri);
+  } catch (_) {
+    return false;
+  }
+}
+
 /// 외부 링크를 브라우저 등 외부 앱으로 연다.
 Future<bool> openLink(String url) async {
   final uri = Uri.tryParse(url.trim());
