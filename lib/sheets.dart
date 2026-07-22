@@ -154,7 +154,10 @@ void showReportSheet(BuildContext c) {
 /// 없으면(개발용 미리보기 화면) 데모 텍스트를 쓴다.
 void showShareSheet(BuildContext c, {AnalysisResult? result}) {
   final level = result?.riskLevel ?? RiskLevel.high;
-  final title = result?.category?.label ?? '검찰 사칭 문자';
+  // 데모(미리보기) 경로만 예시 제목을 쓰고, 실제 결과인데 유형이 없으면 중립 제목.
+  final title = result == null
+      ? '검찰 사칭 문자'
+      : result.category?.label ?? '문자 분석 결과';
   final text = result?.shareSummary ??
       '[세이프팸] 문자 분석 결과\n위험도: 위험\n의심되면 링크·전화에 응하지 마세요.';
 
@@ -179,8 +182,14 @@ void showShareSheet(BuildContext c, {AnalysisResult? result}) {
   }
 
   Future<void> onShare() async {
+    // iPad는 공유 시트를 띄울 앵커(sharePositionOrigin)가 필요하다.
+    // 시트를 닫으면 컨텍스트의 RenderBox가 사라지므로 pop 전에 좌표를 캡처한다.
+    final box = c.findRenderObject() as RenderBox?;
+    final origin = box != null && box.hasSize
+        ? box.localToGlobal(Offset.zero) & box.size
+        : null;
     Navigator.pop(c);
-    await Share.share(text);
+    await Share.share(text, sharePositionOrigin: origin);
   }
 
   Widget item(IconData icon, String label, Color bg, VoidCallback onTap,
