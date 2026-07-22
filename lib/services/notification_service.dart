@@ -53,7 +53,7 @@ class NotificationService {
     if (analysisId == null) return;
 
     try {
-      final analysis = await AnalysisApi.getAnalysis(analysisId);
+      await AnalysisApi.getAnalysis(analysisId);
       navigatorKey.currentState?.push(
         MaterialPageRoute(
           builder: (_) => AnalysisDetailScreen(analysisId: analysisId),
