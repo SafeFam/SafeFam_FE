@@ -2,14 +2,12 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../screens/results.dart';
-import 'analysis_api.dart';
+import 'device_api.dart';
 
 class NotificationService {
-  static final FlutterLocalNotificationsPlugin _plugin =
-  FlutterLocalNotificationsPlugin();
+  static final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
 
-  static final GlobalKey<NavigatorState> navigatorKey =
-  GlobalKey<NavigatorState>();
+  static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
   static Future<void> initialize() async {
     await _plugin.initialize(
@@ -20,6 +18,11 @@ class NotificationService {
         _navigateToDetail(details.payload);
       },
     );
+
+    // FCM 토큰 갱신 시 서버에 재등록
+    FirebaseMessaging.instance.onTokenRefresh.listen((_) {
+      DeviceApi.registerDevice();
+    });
 
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       final notification = message.notification;
@@ -42,8 +45,17 @@ class NotificationService {
       }
     });
 
+    // 백그라운드에서 알림 탭
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
       _navigateToDetail(message.data['analysisId']);
+    });
+
+    // cold start — 앱 종료 상태에서 알림 탭
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final initial = await FirebaseMessaging.instance.getInitialMessage();
+      if (initial != null) {
+        _navigateToDetail(initial.data['analysisId']);
+      }
     });
   }
 
@@ -52,13 +64,10 @@ class NotificationService {
     final analysisId = int.tryParse(analysisIdStr);
     if (analysisId == null) return;
 
-    try {
-      await AnalysisApi.getAnalysis(analysisId);
-      navigatorKey.currentState?.push(
-        MaterialPageRoute(
-          builder: (_) => AnalysisDetailScreen(analysisId: analysisId),
-        ),
-      );
-    } catch (_) {}
+    navigatorKey.currentState?.push(
+      MaterialPageRoute(
+        builder: (_) => AnalysisDetailScreen(analysisId: analysisId),
+      ),
+    );
   }
 }
