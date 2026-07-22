@@ -16,6 +16,10 @@ import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 ///  - 회원가입: { phoneNumber, password, name } → 201만(토큰 없음) → 이어서 로그인
 ///  - 비밀번호 정책: 영문+숫자 포함, 특수문자 없음, 8~64자
 ///  - 로그인 응답에 신규회원 플래그 없음 → 신규/기존은 프론트 흐름으로 판단
+///  - 계정 잠금(SafeFam_BE #42): 로그인 실패 누적 시 계정 잠김. 잠긴 계정 로그인
+///    → HTTP 403 ACCOUNT_LOCKED(메시지 "…잠금을 해제해 주세요"). 해제는
+///    POST /auth/unlock { phoneNumber } — 휴대폰 인증(verify) 선행 필요.
+///    ※ 에러 응답 바디에 코드가 없어 403+메시지('잠금')로 판별한다.
 ///
 /// 마이페이지 users/me (SafeFam_BE #39 구현 완료, 2026-07-20 소스 대조):
 ///  - GET    /api/v1/users/me → UserResponse
@@ -66,6 +70,20 @@ class AuthApi {
     try {
       final body = jsonDecode(res.body);
       return body is Map<String, dynamic> && body['status'] == 'SUCCESS';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// 로그인 실패 응답이 '계정 잠금'(ACCOUNT_LOCKED)인지 판별.
+  /// 백엔드 GlobalExceptionHandler가 바디에 에러코드를 싣지 않으므로,
+  /// HTTP 403 + 메시지 텍스트('잠금')로 잠금 상태를 구분한다.
+  static bool _isLocked(http.Response res) {
+    if (res.statusCode != 403 || res.body.isEmpty) return false;
+    try {
+      final body = jsonDecode(res.body);
+      final msg = body is Map<String, dynamic> ? body['message'] : null;
+      return msg is String && msg.contains('잠금');
     } catch (_) {
       return false;
     }
@@ -128,6 +146,18 @@ class AuthApi {
     return _isSuccess(res);
   }
 
+  /// 계정 잠금 해제. 로그인 실패 누적으로 잠긴 계정을 휴대폰 인증으로 해제한다.
+  /// 비밀번호 재설정과 동일하게, 호출 전 반드시 verifyCode로 서버측 인증(verified)
+  /// 상태를 만들어야 한다(백엔드가 consumeVerified로 검증·소비). code는 바디에 없음.
+  /// 백엔드 계약: POST /api/v1/auth/unlock { phoneNumber }.
+  static Future<bool> unlock(String phone) async {
+    final res = await http
+        .post(_uri('/api/v1/auth/unlock'),
+            headers: _headers(), body: jsonEncode({'phoneNumber': phone}))
+        .timeout(_timeout);
+    return _isSuccess(res);
+  }
+
   /// 비밀번호 정책(가입·재설정 공통): 영문+숫자 포함, 특수문자 없음, 8~64자.
   /// 통과하면 null, 위반하면 안내 메시지를 반환한다.
   static String? passwordError(String pw) {
@@ -154,7 +184,9 @@ class AuthApi {
             body: jsonEncode({'phoneNumber': phone, 'password': password}))
         .timeout(_timeout);
     if (!_isSuccess(res) || res.body.isEmpty) {
-      return const AuthResult(success: false);
+      // 계정 잠금(ACCOUNT_LOCKED)은 휴대폰 인증으로 해제할 수 있으므로 구분한다.
+      // 백엔드가 바디에 에러코드를 싣지 않으므로 403 + 메시지로 판별.
+      return AuthResult(success: false, locked: _isLocked(res));
     }
     final data = jsonDecode(res.body)['data'];
     if (data is! Map<String, dynamic>) return const AuthResult(success: false);
@@ -359,12 +391,14 @@ class AuthApi {
 class AuthResult {
   final bool success;
   final bool isNewUser; // 신규면 가족 등록으로, 기존이면 홈으로
+  final bool locked; // 계정 잠김(ACCOUNT_LOCKED) → 휴대폰 인증으로 해제 안내
   final String? message;
   final String? kakaoId;
   final String? kakaoAccessToken;
   const AuthResult({
     required this.success,
     this.isNewUser = false,
+    this.locked = false,
     this.message,
     this.kakaoId,
     this.kakaoAccessToken,

@@ -7,6 +7,7 @@ import 'family_flow.dart';
 import 'kakao_onboarding_screen.dart';
 import 'signup_screen.dart';
 import 'reset_password_screen.dart';
+import 'unlock_account_screen.dart';
 
 /// 로그인 — 휴대폰 번호 + 비밀번호. 신규는 회원가입 화면으로 이동.
 /// 결과는 AuthApi를 통해 처리(지금은 껍데기).
@@ -73,10 +74,40 @@ class _LoginScreenState extends State<LoginScreen> {
             phone: _phone.text.trim(), password: _password.text);
         if (r.success) {
           _goNext(r);
+        } else if (r.locked) {
+          await _promptUnlock();
         } else {
           _toast('로그인에 실패했어요. 번호와 비밀번호를 확인해 주세요');
         }
       });
+
+  /// 계정 잠김 안내 → 확인 시 휴대폰 인증 해제 화면으로 이동(번호 미리 채움).
+  Future<void> _promptUnlock() async {
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('계정이 잠겼어요',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+        content: const Text(
+            '비밀번호를 여러 번 틀려 계정이 잠겼어요.\n휴대폰 인증으로 잠금을 해제할 수 있어요.',
+            style: TextStyle(fontSize: 15)),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('닫기')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('잠금 해제', style: TextStyle(color: AppColors.blue))),
+        ],
+      ),
+    );
+    if (go != true || !mounted) return;
+    Navigator.push(
+        context,
+        MaterialPageRoute(
+            builder: (_) =>
+                UnlockAccountScreen(initialPhone: _phone.text.trim())));
+  }
 
   Future<void> _social(String provider) => _run(() async {
         final r = await AuthApi.socialLogin(provider);
