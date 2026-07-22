@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
-import '../models.dart' show RiskLevel;
+import '../models.dart' show RiskLevel, RiskMeta;
 import 'auth_api.dart' show AuthApi;
 
 /// 문자 분석·탐지 이력·통계 서버 통신 담당.
@@ -431,6 +431,36 @@ class AnalysisResult {
       analyzedAt: analyzed is String ? DateTime.tryParse(analyzed) : null,
     );
   }
+
+  /// 가족·지인에게 공유할 요약 텍스트.
+  /// ★원문(문자 내용)은 담지 않는다 — 위험도·유형·설명만 넣어 개인정보 노출을 피함.
+  /// explanation은 마스킹된 입력으로 생성되지만, 만약 번호·계좌·링크가 섞여 있어도
+  /// 외부(문자·시스템 공유)로 새지 않도록 공유 직전 한 번 더 마스킹한다(프론트 1차 마스킹 책임).
+  String get shareSummary {
+    final b = StringBuffer('[세이프팸] 문자 분석 결과\n');
+    b.writeln('위험도: ${riskLevel.label} ($riskScore점)');
+    if (category != null) b.writeln('유형: ${category!.label}');
+    final ex = _redactPii(explanation.trim());
+    if (ex.isNotEmpty) b.writeln('\n$ex');
+    b.write('\n\n※ 세이프팸이 분석한 결과예요. 의심되면 링크·전화에 응하지 마세요.');
+    return b.toString();
+  }
+}
+
+/// 공유 텍스트 방어용 PII 마스킹. 이미 마스킹된 입력을 가정하되, 혹시 남아 있을
+/// URL·전화번호·계좌/카드 같은 숫자열을 라벨로 치환해 외부 유출을 막는다(defense-in-depth).
+String _redactPii(String s) {
+  return s
+      // URL: http(s):// 또는 www. 로 시작하는 토큰
+      .replaceAll(RegExp(r'https?://\S+', caseSensitive: false), '[링크]')
+      .replaceAll(RegExp(r'\bwww\.\S+', caseSensitive: false), '[링크]')
+      // 전화번호: 02/010 등 하이픈·점·공백 구분 (예 010-1234-5678, 02.123.4567)
+      .replaceAll(RegExp(r'\b\d{2,4}[-.\s]\d{3,4}[-.\s]\d{4}\b'), '[번호]')
+      // 대표번호류 (예 1588-1234, 15881234)
+      .replaceAll(RegExp(r'\b1\d{3}[-.\s]?\d{4}\b'), '[번호]')
+      // 계좌·카드 등 긴 숫자열(하이픈 포함 9자리 이상 / 순수 숫자 10자리 이상)
+      .replaceAll(RegExp(r'\b\d[\d-]{7,}\d\b'), '[번호]')
+      .replaceAll(RegExp(r'\b\d{10,}\b'), '[번호]');
 }
 
 /// 탐지 이력 목록 항목(AnalysisListItem). sender/preview는 서버가 마스킹해 내려줌.

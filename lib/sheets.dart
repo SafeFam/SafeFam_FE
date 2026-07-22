@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
 import 'theme/app_theme.dart';
 import 'widgets/common.dart';
 import 'models.dart';
+import 'services/analysis_api.dart';
+import 'util/launchers.dart';
 
 Future<void> _showSheet(BuildContext c, Widget child, {double? heightFactor}) {
   return showModalBottomSheet(
@@ -146,19 +150,71 @@ void showReportSheet(BuildContext c) {
 }
 
 /// 13 · 결과 공유 시트.
-void showShareSheet(BuildContext c) {
-  Widget item(IconData icon, String label, Color bg, [Color fg = Colors.white]) => Expanded(
-        child: Column(children: [
-          Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(16)),
-            child: Icon(icon, color: fg, size: 26),
+/// [result]가 있으면 그 요약(원문 제외·개인정보 미포함)을 공유하고,
+/// 없으면(개발용 미리보기 화면) 데모 텍스트를 쓴다.
+void showShareSheet(BuildContext c, {AnalysisResult? result}) {
+  final level = result?.riskLevel ?? RiskLevel.high;
+  // 데모(미리보기) 경로만 예시 제목을 쓰고, 실제 결과인데 유형이 없으면 중립 제목.
+  final title = result == null
+      ? '검찰 사칭 문자'
+      : result.category?.label ?? '문자 분석 결과';
+  final text = result?.shareSummary ??
+      '[세이프팸] 문자 분석 결과\n위험도: 위험\n의심되면 링크·전화에 응하지 마세요.';
+
+  void toast(String msg) {
+    if (!c.mounted) return;
+    ScaffoldMessenger.of(c)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  // 시트를 먼저 닫고 side-effect를 실행한다(시트 컨텍스트 소멸 후 바깥 c로 안내).
+  Future<void> onSms() async {
+    Navigator.pop(c);
+    final ok = await shareBySms(text);
+    if (!ok) toast('문자 앱을 열 수 없어요');
+  }
+
+  Future<void> onCopy() async {
+    Navigator.pop(c);
+    await Clipboard.setData(ClipboardData(text: text));
+    toast('결과를 복사했어요');
+  }
+
+  Future<void> onShare() async {
+    // iPad는 공유 시트를 띄울 앵커(sharePositionOrigin)가 필요하다.
+    // 시트를 닫으면 컨텍스트의 RenderBox가 사라지므로 pop 전에 좌표를 캡처한다.
+    final box = c.findRenderObject() as RenderBox?;
+    final origin = box != null && box.hasSize
+        ? box.localToGlobal(Offset.zero) & box.size
+        : null;
+    Navigator.pop(c);
+    await Share.share(text, sharePositionOrigin: origin);
+  }
+
+  Widget item(IconData icon, String label, Color bg, VoidCallback onTap,
+          [Color fg = Colors.white]) =>
+      Expanded(
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Column(children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration:
+                    BoxDecoration(color: bg, borderRadius: BorderRadius.circular(16)),
+                child: Icon(icon, color: fg, size: 26),
+              ),
+              const SizedBox(height: 8),
+              Text(label, style: AppText.caption),
+            ]),
           ),
-          const SizedBox(height: 8),
-          Text(label, style: AppText.caption),
-        ]),
+        ),
       );
+
   _showSheet(
     c,
     Column(
@@ -172,13 +228,13 @@ void showShareSheet(BuildContext c) {
               BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(16)),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: const [
+            children: [
               Row(children: [
-                RiskBadge(RiskLevel.high, large: false),
-                SizedBox(width: 8),
-                Text('검찰 사칭 문자', style: AppText.caption),
+                RiskBadge(level, large: false),
+                const SizedBox(width: 8),
+                Text(title, style: AppText.caption),
               ]),
-              CharacterDisc(42),
+              const CharacterDisc(42),
             ],
           ),
         ),
@@ -186,10 +242,9 @@ void showShareSheet(BuildContext c) {
         const Text('이 결과를 가족에게 알려요', style: AppText.caption),
         const SizedBox(height: 16),
         Row(children: [
-          item(Icons.chat_bubble, '카카오톡', AppColors.kakao, const Color(0xFF3B1E1E)),
-          item(Icons.sms_outlined, '문자', AppColors.low),
-          item(Icons.groups, '가족', AppColors.blue),
-          item(Icons.copy, '복사', const Color(0xFF6B7280)),
+          item(Icons.sms_outlined, '문자', AppColors.low, onSms),
+          item(Icons.copy, '복사', const Color(0xFF6B7280), onCopy),
+          item(Icons.ios_share, '공유', AppColors.blue, onShare),
         ]),
       ],
     ),
