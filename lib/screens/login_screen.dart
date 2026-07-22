@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/device_api.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common.dart';
 import '../services/auth_api.dart';
@@ -32,6 +33,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _goNext(AuthResult r) {
     if (!mounted) return;
+    // FCM 기기 등록 (백그라운드로 처리)
+    DeviceApi.registerDevice();
+
     final Widget next;
     if (r.isNewUser && r.kakaoAccessToken != null) {
       next = KakaoOnboardingScreen(kakaoAccessToken: r.kakaoAccessToken!);
