@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 
@@ -47,13 +48,37 @@ class AuthApi {
     defaultValue: 'http://10.0.2.2:8080',
   );
 
-  // TODO: 토큰을 앱 재시작에도 유지하려면 flutter_secure_storage로 저장.
+  /// 메모리 캐시(요청 헤더 구성용). 원본은 [_storage]에 보안 저장되며,
+  /// 앱 시작 시 [restoreSession]으로 복구한다.
   static String? accessToken;
   static String? refreshToken;
+
+  /// 토큰 보안 저장소(Android Keystore 기반). 앱을 꺼도 유지된다.
+  static const FlutterSecureStorage _storage = FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+  );
+  static const String _kAccess = 'accessToken';
+  static const String _kRefresh = 'refreshToken';
 
   static const Duration _timeout = Duration(seconds: 10);
 
   static Uri _uri(String path) => Uri.parse('$baseUrl$path');
+
+  /// 토큰을 메모리 캐시 + 보안 저장소에 함께 기록한다.
+  static Future<void> _saveTokens(String access, String refresh) async {
+    accessToken = access;
+    refreshToken = refresh;
+    await _storage.write(key: _kAccess, value: access);
+    await _storage.write(key: _kRefresh, value: refresh);
+  }
+
+  /// 메모리·저장소의 토큰을 모두 폐기한다(로그아웃/탈퇴/세션 만료).
+  static Future<void> _clearTokens() async {
+    accessToken = null;
+    refreshToken = null;
+    await _storage.delete(key: _kAccess);
+    await _storage.delete(key: _kRefresh);
+  }
 
   static Map<String, String> _headers({bool auth = false}) {
     final h = {'Content-Type': 'application/json'};
@@ -198,8 +223,7 @@ class AuthApi {
         nextRefreshToken.isEmpty) {
       return const AuthResult(success: false);
     }
-    accessToken = nextAccessToken;
-    refreshToken = nextRefreshToken;
+    await _saveTokens(nextAccessToken, nextRefreshToken);
     return const AuthResult(success: true, isNewUser: false);
   }
 
@@ -237,8 +261,8 @@ class AuthApi {
       if (!isNewUser) {
         // 기존 회원 → JWT 저장
         final tokenData = data['token'] as Map<String, dynamic>;
-        accessToken = tokenData['accessToken'];
-        refreshToken = tokenData['refreshToken'];
+        await _saveTokens(
+            tokenData['accessToken'] as String, tokenData['refreshToken'] as String);
         return const AuthResult(success: true, isNewUser: false);
       } else {
         // 신규 회원 → kakaoId 저장해서 온보딩으로
@@ -272,8 +296,8 @@ class AuthApi {
       if (!_isSuccess(res)) return const AuthResult(success: false);
 
       final data = jsonDecode(res.body)['data'];
-      accessToken = data['accessToken'];
-      refreshToken = data['refreshToken'];
+      await _saveTokens(
+          data['accessToken'] as String, data['refreshToken'] as String);
       return const AuthResult(success: true);
     } catch (e) {
       return const AuthResult(success: false);
@@ -320,8 +344,7 @@ class AuthApi {
         .timeout(_timeout);
     final ok = res.statusCode == 204 || _isSuccess(res);
     if (ok) {
-      accessToken = null;
-      refreshToken = null;
+      await _clearTokens();
     }
     return ok;
   }
@@ -383,8 +406,47 @@ class AuthApi {
     } catch (_) {
       // 서버 호출이 실패해도 로컬 토큰은 폐기해 로그아웃 상태로 만든다.
     }
-    accessToken = null;
-    refreshToken = null;
+    await _clearTokens();
+  }
+
+  /// 토큰 재발급. 저장된 refreshToken으로 POST /api/v1/auth/reissue 호출.
+  /// 백엔드는 TokenResponse(accessToken·refreshToken 모두 새로 발급, 리프레시 회전)를
+  /// 반환한다. 성공 시 새 토큰을 저장하고 true, 실패 시 false.
+  static Future<bool> reissue() async {
+    final stored = refreshToken ?? await _storage.read(key: _kRefresh);
+    if (stored == null || stored.isEmpty) return false;
+    try {
+      final res = await http
+          .post(_uri('/api/v1/auth/reissue'),
+              headers: _headers(), body: jsonEncode({'refreshToken': stored}))
+          .timeout(_timeout);
+      if (!_isSuccess(res) || res.body.isEmpty) return false;
+      final data = jsonDecode(res.body)['data'];
+      if (data is! Map<String, dynamic>) return false;
+      // 계약상 reissue는 accessToken·refreshToken을 모두 새로 회전 발급한다.
+      // 둘 중 하나라도 없으면 실패로 처리한다(옛 토큰으로 복구 불가능한 세션 방지).
+      final nextAccess = data['accessToken'];
+      final nextRefresh = data['refreshToken'];
+      if (nextAccess is! String ||
+          nextAccess.isEmpty ||
+          nextRefresh is! String ||
+          nextRefresh.isEmpty) {
+        return false;
+      }
+      await _saveTokens(nextAccess, nextRefresh);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// 세션 복구. 앱 시작 시 저장된 refreshToken을 reissue로 검증·갱신한다.
+  /// 성공하면 토큰이 메모리·저장소에 최신화되어 true, 실패하면 남은 토큰을
+  /// 폐기하고 false(→ 로그인 화면으로).
+  static Future<bool> restoreSession() async {
+    final ok = await reissue();
+    if (!ok) await _clearTokens();
+    return ok;
   }
 }
 

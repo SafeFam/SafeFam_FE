@@ -58,3 +58,6 @@ windows/flutter/generated_plugins.cmake
 android/app/google-services.json
 firebase.json
 lib/firebase_options.dart
+
+# Kotlin build cache (Gradle 빌드 부산물)
+android/.kotlin/
