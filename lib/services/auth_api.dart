@@ -423,14 +423,17 @@ class AuthApi {
       if (!_isSuccess(res) || res.body.isEmpty) return false;
       final data = jsonDecode(res.body)['data'];
       if (data is! Map<String, dynamic>) return false;
+      // 계약상 reissue는 accessToken·refreshToken을 모두 새로 회전 발급한다.
+      // 둘 중 하나라도 없으면 실패로 처리한다(옛 토큰으로 복구 불가능한 세션 방지).
       final nextAccess = data['accessToken'];
-      if (nextAccess is! String || nextAccess.isEmpty) return false;
       final nextRefresh = data['refreshToken'];
-      // 리프레시가 회전되면 새 값, 아니면 기존 값을 유지한다.
-      final refreshToSave = (nextRefresh is String && nextRefresh.isNotEmpty)
-          ? nextRefresh
-          : stored;
-      await _saveTokens(nextAccess, refreshToSave);
+      if (nextAccess is! String ||
+          nextAccess.isEmpty ||
+          nextRefresh is! String ||
+          nextRefresh.isEmpty) {
+        return false;
+      }
+      await _saveTokens(nextAccess, nextRefresh);
       return true;
     } catch (_) {
       return false;
