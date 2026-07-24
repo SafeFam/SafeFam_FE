@@ -12,13 +12,17 @@ class AppPrefs {
 
   /// 온보딩을 이미 마쳤는지. 기기 최초 1회만 노출하기 위한 플래그라
   /// 로그아웃해도 유지된다(앱을 지웠다 다시 깔아야 초기화).
-  static Future<bool> onboardingSeen() async {
+  ///
+  /// 저장소를 읽지 못하면 `null`(판단 불가)을 돌려준다. `false`는 **키가 없는
+  /// 확실한 최초 실행**에만 쓴다 — 정상적인 최초 실행은 `read`가 예외 없이
+  /// `null`을 주므로, 예외가 났다는 건 대개 신규 설치가 아니라 쓰던 기기의
+  /// 저장소 손상이다. 둘을 `false`로 뭉개면 그런 기기에서 이미 온보딩을 본
+  /// 사용자에게 매 실행마다 온보딩이 다시 뜬다.
+  static Future<bool?> onboardingSeen() async {
     try {
       return await _storage.read(key: _kOnboardingSeen) == 'true';
     } catch (_) {
-      // 저장소 접근 실패는 '아직 안 봄'으로 수렴시킨다.
-      // 권한 안내를 건너뛰는 쪽보다 한 번 더 보여주는 쪽이 안전하다.
-      return false;
+      return null;
     }
   }
 

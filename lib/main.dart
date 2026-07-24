@@ -73,9 +73,13 @@ class _BootstrapState extends State<_Bootstrap> {
       // 자동 로그인 성공 시 FCM 기기 재등록(백그라운드, 실패해도 무방).
       if (restored) DeviceApi.registerDevice();
       // 자동 로그인된 사용자는 이미 가입을 마친 상태라 온보딩을 다시 묻지 않는다.
+      // 그 외에는 '확실한 최초 실행'(false)일 때만 온보딩을 띄우고, 저장소를
+      // 못 읽어 판단이 불가능하면(null) 로그인으로 보낸다.
       entry = restored
           ? _Entry.home
-          : (await AppPrefs.onboardingSeen() ? _Entry.login : _Entry.onboarding);
+          : (await AppPrefs.onboardingSeen() == false
+              ? _Entry.onboarding
+              : _Entry.login);
     } catch (_) {
       // 보안 저장소 접근 실패 등으로 판단이 불가능해도 스플래시에 갇히지 않도록,
       // 직접 로그인할 수 있는 화면으로 내보낸다.
