@@ -45,13 +45,8 @@ class AnalysisApi {
         .replace(queryParameters: qp.isEmpty ? null : qp);
   }
 
-  /// 모든 분석 API는 보호된 요청이라 항상 Bearer 토큰을 붙인다.
-  static Map<String, String> _headers() {
-    final h = {'Content-Type': 'application/json'};
-    final token = AuthApi.accessToken;
-    if (token != null) h['Authorization'] = 'Bearer $token';
-    return h;
-  }
+  /// 모든 분석 API는 보호된 요청이라 [AuthApi.sendAuthorized]를 거친다.
+  /// Bearer 토큰 부착은 물론, 401이면 재발급 후 1회 재시도까지 처리된다.
 
   /// 2xx이면서 ApiResponse.status == "SUCCESS"일 때 성공(바디 없는 성공도 허용).
   static bool _isSuccess(http.Response res) {
@@ -82,9 +77,9 @@ class AnalysisApi {
     String? clientMessageId,
   }) async {
     try {
-      final res = await http
+      final res = await AuthApi.sendAuthorized((headers) => http
           .post(_uri('/api/v1/analyses'),
-              headers: _headers(),
+              headers: headers,
               body: jsonEncode({
                 if (clientMessageId != null) 'clientMessageId': clientMessageId,
                 if (sender != null) 'sender': sender,
@@ -93,7 +88,7 @@ class AnalysisApi {
                 'receivedAt': receivedAt.toUtc().toIso8601String(),
                 'source': source.wire,
               }))
-          .timeout(_timeout);
+          .timeout(_timeout));
       final data = _data(res);
       return data == null ? null : AnalysisResult.fromJson(data);
     } catch (_) {
@@ -111,7 +106,7 @@ class AnalysisApi {
     DateTime? to,
   }) async {
     try {
-      final res = await http
+      final res = await AuthApi.sendAuthorized((headers) => http
           .get(
               _uri('/api/v1/analyses', {
                 'page': page,
@@ -121,8 +116,8 @@ class AnalysisApi {
                 'from': from == null ? null : _isoDate(from),
                 'to': to == null ? null : _isoDate(to),
               }),
-              headers: _headers())
-          .timeout(_timeout);
+              headers: headers)
+          .timeout(_timeout));
       final data = _data(res);
       return data == null ? null : AnalysisPage.fromJson(data);
     } catch (_) {
@@ -133,9 +128,9 @@ class AnalysisApi {
   /// 탐지 이력 상세. 실패 시 null.
   static Future<AnalysisResult?> getAnalysis(int analysisId) async {
     try {
-      final res = await http
-          .get(_uri('/api/v1/analyses/$analysisId'), headers: _headers())
-          .timeout(_timeout);
+      final res = await AuthApi.sendAuthorized((headers) => http
+          .get(_uri('/api/v1/analyses/$analysisId'), headers: headers)
+          .timeout(_timeout));
       final data = _data(res);
       return data == null ? null : AnalysisResult.fromJson(data);
     } catch (_) {
@@ -146,9 +141,9 @@ class AnalysisApi {
   /// 탐지 이력 삭제. 성공(204) 여부.
   static Future<bool> deleteAnalysis(int analysisId) async {
     try {
-      final res = await http
-          .delete(_uri('/api/v1/analyses/$analysisId'), headers: _headers())
-          .timeout(_timeout);
+      final res = await AuthApi.sendAuthorized((headers) => http
+          .delete(_uri('/api/v1/analyses/$analysisId'), headers: headers)
+          .timeout(_timeout));
       return res.statusCode == 204 || _isSuccess(res);
     } catch (_) {
       return false;
@@ -162,14 +157,14 @@ class AnalysisApi {
     String? comment,
   }) async {
     try {
-      final res = await http
+      final res = await AuthApi.sendAuthorized((headers) => http
           .post(_uri('/api/v1/analyses/$analysisId/feedback'),
-              headers: _headers(),
+              headers: headers,
               body: jsonEncode({
                 'type': type.wire,
                 if (comment != null && comment.isNotEmpty) 'comment': comment,
               }))
-          .timeout(_timeout);
+          .timeout(_timeout));
       return _isSuccess(res);
     } catch (_) {
       return false;
@@ -181,10 +176,10 @@ class AnalysisApi {
     StatisticsPeriod period = StatisticsPeriod.last30Days,
   }) async {
     try {
-      final res = await http
+      final res = await AuthApi.sendAuthorized((headers) => http
           .get(_uri('/api/v1/statistics/overview', {'period': period.wire}),
-              headers: _headers())
-          .timeout(_timeout);
+              headers: headers)
+          .timeout(_timeout));
       final data = _data(res);
       return data == null ? null : StatisticsOverview.fromJson(data);
     } catch (_) {

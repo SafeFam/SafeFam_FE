@@ -68,6 +68,8 @@ class AuthApi {
   static Future<void> _saveTokens(String access, String refresh) async {
     accessToken = access;
     refreshToken = refresh;
+    // 새 세션이 생겼으니 만료 통보를 다시 받을 수 있게 푼다.
+    _sessionExpiredNotified = false;
     await _storage.write(key: _kAccess, value: access);
     await _storage.write(key: _kRefresh, value: refresh);
   }
@@ -86,6 +88,48 @@ class AuthApi {
       h['Authorization'] = 'Bearer $accessToken';
     }
     return h;
+  }
+
+  /// 세션이 완전히 끊겼을 때(재발급 실패) 한 번 통보된다.
+  /// 서비스 계층이 화면 전환을 알 필요는 없으므로, `main.dart`가 로그인 화면으로
+  /// 보내도록 연결한다.
+  static void Function()? onSessionExpired;
+
+  /// 진행 중인 재발급. refreshToken은 1회용(회전)이라 동시에 두 번 호출하면
+  /// 백엔드가 재사용을 탈취로 간주해 세션을 끊는다(SafeFam_BE #56).
+  /// 그래서 동시에 401을 받은 요청들이 하나의 재발급 결과를 공유하게 한다.
+  static Future<bool>? _refreshing;
+
+  /// 세션 만료 통보는 한 번만. 동시에 여러 요청이 실패해도 로그인 화면이
+  /// 여러 번 밀려 올라가지 않게 한다. 재로그인(=토큰 저장) 시 풀린다.
+  static bool _sessionExpiredNotified = false;
+
+  /// 재발급을 single-flight으로 실행한다. 이미 진행 중이면 그 결과를 기다린다.
+  static Future<bool> _refreshOnce() =>
+      _refreshing ??= reissue().whenComplete(() => _refreshing = null);
+
+  /// 보호된 요청 공통 경로.
+  ///
+  /// [request]는 헤더를 받아 요청을 보내는 함수여야 한다(재시도 때 **새 토큰이
+  /// 담긴 헤더**로 다시 불리기 때문에, 헤더를 미리 만들어 넘기면 안 된다).
+  ///
+  /// 401이면 토큰을 재발급하고 같은 요청을 한 번만 재시도한다. 재발급이
+  /// 실패하면 세션을 폐기하고 [onSessionExpired]로 알린 뒤, 호출부가 기존
+  /// 실패 경로를 타도록 마지막 401 응답을 그대로 돌려준다.
+  static Future<http.Response> sendAuthorized(
+    Future<http.Response> Function(Map<String, String> headers) request,
+  ) async {
+    final res = await request(_headers(auth: true));
+    if (res.statusCode != 401) return res;
+
+    if (await _refreshOnce()) return request(_headers(auth: true));
+
+    await _clearTokens();
+    if (!_sessionExpiredNotified) {
+      _sessionExpiredNotified = true;
+      onSessionExpired?.call();
+    }
+    return res;
   }
 
   /// 2xx이면서 ApiResponse.status == "SUCCESS"일 때 성공.
@@ -307,9 +351,8 @@ class AuthApi {
   /// 내 정보 조회(마이페이지). GET /api/v1/users/me (Bearer).
   /// 실패 시 예외를 던져 화면(FutureBuilder)이 에러 상태를 보이게 한다.
   static Future<UserProfile> myProfile() async {
-    final res = await http
-        .get(_uri('/api/v1/users/me'), headers: _headers(auth: true))
-        .timeout(_timeout);
+    final res = await sendAuthorized((headers) =>
+        http.get(_uri('/api/v1/users/me'), headers: headers).timeout(_timeout));
     if (!_isSuccess(res) || res.body.isEmpty) {
       throw Exception('프로필을 불러오지 못했습니다');
     }
@@ -323,10 +366,10 @@ class AuthApi {
   /// 내 정보(이름) 수정. PATCH /api/v1/users/me { name } (Bearer).
   /// 성공 시 수정된 프로필을 반환, 실패 시 null.
   static Future<UserProfile?> updateName(String name) async {
-    final res = await http
+    final res = await sendAuthorized((headers) => http
         .patch(_uri('/api/v1/users/me'),
-            headers: _headers(auth: true), body: jsonEncode({'name': name}))
-        .timeout(_timeout);
+            headers: headers, body: jsonEncode({'name': name}))
+        .timeout(_timeout));
     if (!_isSuccess(res) || res.body.isEmpty) return null;
     final data = jsonDecode(res.body)['data'];
     if (data is! Map<String, dynamic>) return null;
@@ -337,11 +380,10 @@ class AuthApi {
   /// 본인 확인용 비밀번호 재입력 필요. 비번이 틀리면 실패(false).
   /// 성공 시 로컬 토큰을 폐기해 로그아웃 상태로 만든다.
   static Future<bool> withdraw(String password) async {
-    final res = await http
+    final res = await sendAuthorized((headers) => http
         .delete(_uri('/api/v1/users/me'),
-            headers: _headers(auth: true),
-            body: jsonEncode({'password': password}))
-        .timeout(_timeout);
+            headers: headers, body: jsonEncode({'password': password}))
+        .timeout(_timeout));
     final ok = res.statusCode == 204 || _isSuccess(res);
     if (ok) {
       await _clearTokens();
@@ -352,9 +394,9 @@ class AuthApi {
   /// 탐지·알림 설정 조회. GET /api/v1/users/me/settings (Bearer).
   /// 실패 시 예외를 던져 화면이 에러 상태를 보이게 한다.
   static Future<UserSettings> getSettings() async {
-    final res = await http
-        .get(_uri('/api/v1/users/me/settings'), headers: _headers(auth: true))
-        .timeout(_timeout);
+    final res = await sendAuthorized((headers) => http
+        .get(_uri('/api/v1/users/me/settings'), headers: headers)
+        .timeout(_timeout));
     if (!_isSuccess(res) || res.body.isEmpty) {
       throw Exception('설정을 불러오지 못했습니다');
     }
@@ -378,10 +420,10 @@ class AuthApi {
     }
     if (pushEnabled != null) body['pushEnabled'] = pushEnabled;
     try {
-      final res = await http
+      final res = await sendAuthorized((headers) => http
           .patch(_uri('/api/v1/users/me/settings'),
-              headers: _headers(auth: true), body: jsonEncode(body))
-          .timeout(_timeout);
+              headers: headers, body: jsonEncode(body))
+          .timeout(_timeout));
       if (!_isSuccess(res) || res.body.isEmpty) return null;
       final data = jsonDecode(res.body)['data'];
       if (data is! Map<String, dynamic>) return null;
