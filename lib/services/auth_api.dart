@@ -68,12 +68,16 @@ class AuthApi {
   static Future<void> _saveTokens(String access, String refresh) async {
     accessToken = access;
     refreshToken = refresh;
+    // 새 세션이 생겼으니 만료 통보를 다시 받을 수 있게 푼다.
+    _sessionExpiredNotified = false;
     await _storage.write(key: _kAccess, value: access);
     await _storage.write(key: _kRefresh, value: refresh);
   }
 
   /// 메모리·저장소의 토큰을 모두 폐기한다(로그아웃/탈퇴/세션 만료).
   static Future<void> _clearTokens() async {
+    // 세대를 올려, 진행 중인 재발급이 폐기 후 뒤늦게 세션을 되살리지 못하게 한다.
+    _sessionGeneration++;
     accessToken = null;
     refreshToken = null;
     await _storage.delete(key: _kAccess);
@@ -86,6 +90,60 @@ class AuthApi {
       h['Authorization'] = 'Bearer $accessToken';
     }
     return h;
+  }
+
+  /// 세션이 완전히 끊겼을 때(재발급 실패) 한 번 통보된다.
+  /// 서비스 계층이 화면 전환을 알 필요는 없으므로, `main.dart`가 로그인 화면으로
+  /// 보내도록 연결한다.
+  static void Function()? onSessionExpired;
+
+  /// 진행 중인 재발급. refreshToken은 1회용(회전)이라 동시에 두 번 호출하면
+  /// 백엔드가 재사용을 탈취로 간주해 세션을 끊는다(SafeFam_BE #56).
+  /// 그래서 동시에 401을 받은 요청들이 하나의 재발급 결과를 공유하게 한다.
+  static Future<bool>? _refreshing;
+
+  /// 세션 만료 통보는 한 번만. 동시에 여러 요청이 실패해도 로그인 화면이
+  /// 여러 번 밀려 올라가지 않게 한다. 재로그인(=토큰 저장) 시 풀린다.
+  static bool _sessionExpiredNotified = false;
+
+  /// 세션 세대. 토큰을 폐기할 때마다 올라간다. 재발급이 저장소에서 토큰을 읽은
+  /// 뒤 http 대기 중에 로그아웃/탈퇴가 끼어들면, 재발급이 끝나도 세대가 달라져
+  /// 새 토큰을 저장하지 않는다(로그아웃이 재발급에 되돌려지는 것을 막는다).
+  static int _sessionGeneration = 0;
+
+  /// 재발급을 single-flight으로 실행한다. 이미 진행 중이면 그 결과를 기다린다.
+  static Future<bool> _refreshOnce() =>
+      _refreshing ??= reissue().whenComplete(() => _refreshing = null);
+
+  /// 보호된 요청 공통 경로.
+  ///
+  /// [request]는 헤더를 받아 요청을 보내는 함수여야 한다(재시도 때 **새 토큰이
+  /// 담긴 헤더**로 다시 불리기 때문에, 헤더를 미리 만들어 넘기면 안 된다).
+  ///
+  /// 401이면 토큰을 재발급하고 같은 요청을 한 번만 재시도한다. 재발급이
+  /// 실패하면 세션을 폐기하고 [onSessionExpired]로 알린 뒤, 호출부가 기존
+  /// 실패 경로를 타도록 마지막 401 응답을 그대로 돌려준다.
+  static Future<http.Response> sendAuthorized(
+    Future<http.Response> Function(Map<String, String> headers) request,
+  ) async {
+    final sentToken = accessToken;
+    final res = await request(_headers(auth: true));
+    if (res.statusCode != 401) return res;
+
+    // 요청을 보낸 사이 다른 요청이 이미 토큰을 갱신했다면(회전) 재발급 없이
+    // 새 토큰으로 바로 한 번 재시도한다. 불필요한 추가 회전을 피한다.
+    if (accessToken != null && accessToken != sentToken) {
+      return request(_headers(auth: true));
+    }
+
+    if (await _refreshOnce()) return request(_headers(auth: true));
+
+    await _clearTokens();
+    if (!_sessionExpiredNotified) {
+      _sessionExpiredNotified = true;
+      onSessionExpired?.call();
+    }
+    return res;
   }
 
   /// 2xx이면서 ApiResponse.status == "SUCCESS"일 때 성공.
@@ -307,9 +365,8 @@ class AuthApi {
   /// 내 정보 조회(마이페이지). GET /api/v1/users/me (Bearer).
   /// 실패 시 예외를 던져 화면(FutureBuilder)이 에러 상태를 보이게 한다.
   static Future<UserProfile> myProfile() async {
-    final res = await http
-        .get(_uri('/api/v1/users/me'), headers: _headers(auth: true))
-        .timeout(_timeout);
+    final res = await sendAuthorized((headers) =>
+        http.get(_uri('/api/v1/users/me'), headers: headers).timeout(_timeout));
     if (!_isSuccess(res) || res.body.isEmpty) {
       throw Exception('프로필을 불러오지 못했습니다');
     }
@@ -323,10 +380,10 @@ class AuthApi {
   /// 내 정보(이름) 수정. PATCH /api/v1/users/me { name } (Bearer).
   /// 성공 시 수정된 프로필을 반환, 실패 시 null.
   static Future<UserProfile?> updateName(String name) async {
-    final res = await http
+    final res = await sendAuthorized((headers) => http
         .patch(_uri('/api/v1/users/me'),
-            headers: _headers(auth: true), body: jsonEncode({'name': name}))
-        .timeout(_timeout);
+            headers: headers, body: jsonEncode({'name': name}))
+        .timeout(_timeout));
     if (!_isSuccess(res) || res.body.isEmpty) return null;
     final data = jsonDecode(res.body)['data'];
     if (data is! Map<String, dynamic>) return null;
@@ -337,11 +394,10 @@ class AuthApi {
   /// 본인 확인용 비밀번호 재입력 필요. 비번이 틀리면 실패(false).
   /// 성공 시 로컬 토큰을 폐기해 로그아웃 상태로 만든다.
   static Future<bool> withdraw(String password) async {
-    final res = await http
+    final res = await sendAuthorized((headers) => http
         .delete(_uri('/api/v1/users/me'),
-            headers: _headers(auth: true),
-            body: jsonEncode({'password': password}))
-        .timeout(_timeout);
+            headers: headers, body: jsonEncode({'password': password}))
+        .timeout(_timeout));
     final ok = res.statusCode == 204 || _isSuccess(res);
     if (ok) {
       await _clearTokens();
@@ -352,9 +408,9 @@ class AuthApi {
   /// 탐지·알림 설정 조회. GET /api/v1/users/me/settings (Bearer).
   /// 실패 시 예외를 던져 화면이 에러 상태를 보이게 한다.
   static Future<UserSettings> getSettings() async {
-    final res = await http
-        .get(_uri('/api/v1/users/me/settings'), headers: _headers(auth: true))
-        .timeout(_timeout);
+    final res = await sendAuthorized((headers) => http
+        .get(_uri('/api/v1/users/me/settings'), headers: headers)
+        .timeout(_timeout));
     if (!_isSuccess(res) || res.body.isEmpty) {
       throw Exception('설정을 불러오지 못했습니다');
     }
@@ -378,10 +434,10 @@ class AuthApi {
     }
     if (pushEnabled != null) body['pushEnabled'] = pushEnabled;
     try {
-      final res = await http
+      final res = await sendAuthorized((headers) => http
           .patch(_uri('/api/v1/users/me/settings'),
-              headers: _headers(auth: true), body: jsonEncode(body))
-          .timeout(_timeout);
+              headers: headers, body: jsonEncode(body))
+          .timeout(_timeout));
       if (!_isSuccess(res) || res.body.isEmpty) return null;
       final data = jsonDecode(res.body)['data'];
       if (data is! Map<String, dynamic>) return null;
@@ -413,6 +469,9 @@ class AuthApi {
   /// 백엔드는 TokenResponse(accessToken·refreshToken 모두 새로 발급, 리프레시 회전)를
   /// 반환한다. 성공 시 새 토큰을 저장하고 true, 실패 시 false.
   static Future<bool> reissue() async {
+    // 이 재발급이 시작된 시점의 세션 세대. 진행 중 로그아웃/탈퇴로 토큰이
+    // 폐기되면 세대가 바뀌어, 완료돼도 새 세션을 저장하지 않는다.
+    final generation = _sessionGeneration;
     final stored = refreshToken ?? await _storage.read(key: _kRefresh);
     if (stored == null || stored.isEmpty) return false;
     try {
@@ -433,6 +492,8 @@ class AuthApi {
           nextRefresh.isEmpty) {
         return false;
       }
+      // 재발급이 끝나기 전에 세션이 폐기됐다면(로그아웃/탈퇴) 되살리지 않는다.
+      if (generation != _sessionGeneration) return false;
       await _saveTokens(nextAccess, nextRefresh);
       return true;
     } catch (_) {

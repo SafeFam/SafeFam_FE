@@ -29,6 +29,15 @@ void main() async {
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
   await NotificationService.initialize();
 
+  // 토큰 재발급까지 실패해 세션이 끊기면 로그인 화면으로 되돌린다.
+  // 쌓인 화면을 모두 걷어내, 뒤로가기로 만료된 화면에 돌아가지 못하게 한다.
+  AuthApi.onSessionExpired = () {
+    NotificationService.navigatorKey.currentState?.pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (route) => false,
+    );
+  };
+
   runApp(const SafeFamApp());
 }
 

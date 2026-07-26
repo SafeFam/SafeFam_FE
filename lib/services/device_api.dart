@@ -7,12 +7,6 @@ class DeviceApi {
   static const Duration _timeout = Duration(seconds: 10);
   static Uri _uri(String path) => Uri.parse('${AuthApi.baseUrl}$path');
 
-  static Map<String, String> _headers() => {
-    'Content-Type': 'application/json',
-    if (AuthApi.accessToken != null)
-      'Authorization': 'Bearer ${AuthApi.accessToken}',
-  };
-
   /// 로그인 성공 후 FCM 토큰 발급하고 서버에 기기 등록
   static Future<void> registerDevice() async {
     try {
@@ -25,17 +19,17 @@ class DeviceApi {
       final token = await messaging.getToken();
       if (token == null) return;
 
-      // 서버에 기기 등록
-      await http
+      // 서버에 기기 등록(보호된 API → 401이면 재발급 후 재시도)
+      await AuthApi.sendAuthorized((headers) => http
           .post(
         _uri('/api/v1/devices'),
-        headers: _headers(),
+        headers: headers,
         body: jsonEncode({
           'deviceToken': token,
           'platform': 'ANDROID',
         }),
       )
-          .timeout(_timeout);
+          .timeout(_timeout));
     } catch (_) {
       // 기기 등록 실패해도 앱 흐름에 영향 없음
     }
