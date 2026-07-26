@@ -34,4 +34,34 @@ class AppPrefs {
       // 기록에 실패해도 흐름은 그대로 진행한다(다음 실행에 한 번 더 보일 뿐).
     }
   }
+
+  /// 가족 연결 별명(예: '어머니'). 백엔드에는 이름 필드가 없어 기기 로컬에만
+  /// 둔다. 연결(linkId)마다 하나씩 저장한다.
+  static String _familyNameKey(int linkId) => 'familyName:$linkId';
+
+  /// 저장된 별명. 없거나 못 읽으면 null.
+  static Future<String?> familyName(int linkId) async {
+    try {
+      final v = await _storage.read(key: _familyNameKey(linkId));
+      return (v == null || v.isEmpty) ? null : v;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 별명 저장.
+  static Future<void> setFamilyName(int linkId, String name) async {
+    try {
+      await _storage.write(key: _familyNameKey(linkId), value: name);
+    } catch (_) {
+      // 저장 실패해도 연결 자체는 유효하다(번호로 표시될 뿐).
+    }
+  }
+
+  /// 연결 해제 시 별명도 지운다.
+  static Future<void> removeFamilyName(int linkId) async {
+    try {
+      await _storage.delete(key: _familyNameKey(linkId));
+    } catch (_) {}
+  }
 }
