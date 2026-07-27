@@ -86,6 +86,22 @@ class FamilyApi {
     }
   }
 
+  /// QR 토큰으로 연결(피보호자). 성공/실패 사유를 함께 돌려준다.
+  /// 보호자 초대 화면의 QR을 스캔해 얻은 [qrToken]을 그대로 넘긴다.
+  static Future<FamilyLinkResult> linkByQr(String qrToken) async {
+    try {
+      final res = await AuthApi.sendAuthorized((headers) => http
+          .post(_uri('/api/v1/family/link/qr'),
+              headers: headers, body: jsonEncode({'qrToken': qrToken}))
+          .timeout(_timeout));
+      if (_isSuccess(res)) return const FamilyLinkResult.ok();
+      return FamilyLinkResult.fail(
+          _errorMessage(res) ?? _fallbackLinkError(res.statusCode));
+    } catch (_) {
+      return const FamilyLinkResult.fail('연결하지 못했어요. 잠시 후 다시 시도해 주세요.');
+    }
+  }
+
   /// 연결된 가족(피보호자) 목록 조회(보호자). 실패 시 null, 없으면 빈 목록.
   static Future<List<FamilyMember>?> getMembers() async {
     try {

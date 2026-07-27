@@ -2,11 +2,13 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common.dart';
 import '../widgets/main_scaffold.dart';
 import '../services/app_prefs.dart';
 import '../services/family_api.dart';
+import 'qr_scan_screen.dart';
 
 PreferredSizeWidget _bar(BuildContext c, String title) => AppBar(
       backgroundColor: Colors.white,
@@ -230,6 +232,28 @@ class _InviteCodeScreenState extends State<InviteCodeScreen> {
                     color: _expired ? AppColors.high : AppColors.t3)),
           ]),
         ),
+        if (!_expired && invite.qrToken.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          const Text('또는 QR로 바로 연결', style: AppText.caption),
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.line)),
+            child: QrImageView(
+              data: invite.qrToken,
+              size: 168,
+              backgroundColor: Colors.white,
+              // 인식 실패 시 위험 안내를 그리지 않고 조용히 비운다(코드 입력이 대안).
+              errorStateBuilder: (_, __) => const SizedBox(
+                  width: 168,
+                  height: 168,
+                  child: Center(child: Text('QR을 그릴 수 없어요', style: AppText.caption))),
+            ),
+          ),
+        ],
         const SizedBox(height: 18),
         if (_expired)
           SfButton('새 코드 발급', icon: Icons.refresh, onTap: _issue)
@@ -369,6 +393,27 @@ class _GuardianLinkScreenState extends State<GuardianLinkScreen> {
     }
   }
 
+  /// QR 스캔 → qrToken → linkByQr. 연결/에러 처리는 코드 연결과 동일.
+  Future<void> _scanQr() async {
+    final token = await Navigator.push<String>(
+        context, MaterialPageRoute(builder: (_) => const QrScanScreen()));
+    if (!mounted || token == null || token.isEmpty) return;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    final result = await FamilyApi.linkByQr(token);
+    if (!mounted) return;
+    if (result.success) {
+      _toMain(context);
+    } else {
+      setState(() {
+        _loading = false;
+        _error = result.error;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -423,8 +468,7 @@ class _GuardianLinkScreenState extends State<GuardianLinkScreen> {
             SfButton('QR 코드 비추기',
                 icon: Icons.qr_code,
                 variant: SfBtn.ghost,
-                onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('QR 연결은 곧 제공돼요')))),
+                onTap: _loading ? null : _scanQr),
           ],
         ),
       ),
