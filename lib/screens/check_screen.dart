@@ -28,21 +28,23 @@ class _CheckScreenState extends State<CheckScreen> {
       return;
     }
     setState(() => _loading = true);
-    final result = await AnalysisApi.analyze(
+    final outcome = await AnalysisApi.analyze(
       content: text,
       receivedAt: DateTime.now(),
       source: AnalysisSource.manual,
     );
     if (!mounted) return;
     setState(() => _loading = false);
-    if (result == null) {
-      _snack('분석에 실패했어요. 잠시 후 다시 시도해 주세요.');
+    if (!outcome.ok) {
+      // 한도 초과(429)면 서버 안내 문구를, 그 외엔 일반 실패 문구를 그대로 노출.
+      _snack(outcome.error ?? '분석에 실패했어요. 잠시 후 다시 시도해 주세요.');
       return;
     }
     Navigator.push(
       context,
       MaterialPageRoute(
-          builder: (_) => ResultScreen(result: result, messageText: text)),
+          builder: (_) =>
+              ResultScreen(result: outcome.result!, messageText: text)),
     );
   }
 

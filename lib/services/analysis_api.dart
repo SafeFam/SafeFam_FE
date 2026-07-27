@@ -16,6 +16,8 @@ import 'auth_api.dart' show AuthApi;
 ///  문자 분석 /api/v1/analyses
 ///   - POST                요청 { clientMessageId?, sender?, content(필수,≤5000),
 ///                               receivedAt(OffsetDateTime), source: AUTO|MANUAL } → AnalysisResponse
+///                         ※ 유저 기준 10회/분 레이트리밋 → 초과 시 429
+///                           (ERROR, message="분석 요청 한도를 초과했습니다…", Retry-After 없음)
 ///   - GET                 이력 목록. 쿼리 page,size,riskLevel,category,from,to
 ///                               → PageResponse<AnalysisListItem>
 ///                               (maskedSender·messagePreview는 서버가 이미 마스킹)
@@ -68,9 +70,25 @@ class AnalysisApi {
     return data is Map<String, dynamic> ? data : null;
   }
 
-  /// 문자 분석 요청. 성공 시 결과, 실패 시 null.
+  /// 에러 응답에서 사용자에게 보여줄 message를 꺼낸다(없으면 null).
+  static String? _errorMessage(http.Response res) {
+    if (res.body.isEmpty) return null;
+    try {
+      final body = jsonDecode(res.body);
+      if (body is Map<String, dynamic> && body['message'] is String) {
+        final msg = (body['message'] as String).trim();
+        return msg.isEmpty ? null : msg;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// 문자 분석 요청. 성공/실패 사유를 함께 담은 [AnalysisOutcome]로 돌려준다.
   /// [source]는 자동 탐지(AUTO)/수동 입력(MANUAL) 구분.
-  static Future<AnalysisResult?> analyze({
+  ///
+  /// 백엔드는 이 엔드포인트에 유저 기준 10회/분 레이트리밋을 걸어(초과 시 429,
+  /// `ANALYSIS_RATE_LIMIT_EXCEEDED`) 일반 실패와 다른 안내가 필요하다.
+  static Future<AnalysisOutcome> analyze({
     required String content,
     required DateTime receivedAt,
     required AnalysisSource source,
@@ -92,10 +110,20 @@ class AnalysisApi {
                 'source': source.wire,
               }))
           .timeout(_timeout));
+      // 429: 분석 요청 한도 초과. 서버 안내 문구를 그대로 노출(단일 출처).
+      if (res.statusCode == 429) {
+        return AnalysisOutcome.failure(
+          _errorMessage(res) ?? '분석 요청이 잠시 제한됐어요. 잠시 후 다시 시도해 주세요.',
+          rateLimited: true,
+        );
+      }
       final data = _data(res);
-      return data == null ? null : AnalysisResult.fromJson(data);
+      if (data == null) {
+        return const AnalysisOutcome.failure('분석에 실패했어요. 잠시 후 다시 시도해 주세요.');
+      }
+      return AnalysisOutcome.success(AnalysisResult.fromJson(data));
     } catch (_) {
-      return null;
+      return const AnalysisOutcome.failure('분석에 실패했어요. 잠시 후 다시 시도해 주세요.');
     }
   }
 
@@ -195,6 +223,24 @@ class AnalysisApi {
       '${d.year.toString().padLeft(4, '0')}-'
       '${d.month.toString().padLeft(2, '0')}-'
       '${d.day.toString().padLeft(2, '0')}';
+}
+
+/// 분석 요청 결과. 성공이면 [result]가 채워지고, 실패면 사용자에게 보여줄
+/// [error] 문구가 담긴다. [rateLimited]는 429(요청 한도 초과)를 일반 실패와
+/// 구분해, 화면이 필요하면 다르게 안내할 수 있게 한다.
+class AnalysisOutcome {
+  final AnalysisResult? result;
+  final String? error;
+  final bool rateLimited;
+
+  const AnalysisOutcome.success(AnalysisResult this.result)
+      : error = null,
+        rateLimited = false;
+  const AnalysisOutcome.failure(this.error, {this.rateLimited = false})
+      : result = null;
+
+  /// 성공 여부.
+  bool get ok => result != null;
 }
 
 // ─────────────────────────── enums (백엔드 계약 매핑) ───────────────────────────
