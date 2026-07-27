@@ -410,7 +410,7 @@ class _ResultScreenState extends State<ResultScreen> {
           const SizedBox(height: 12),
           SfButton('대응 방법 물어보기',
               icon: Icons.smart_toy_outlined,
-              onTap: () => showChatbotSheet(context)),
+              onTap: () => showChatbotSheet(context, result: _r)),
         ],
       ),
     );

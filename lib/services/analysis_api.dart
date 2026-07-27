@@ -202,6 +202,26 @@ class AnalysisApi {
     }
   }
 
+  /// 탐지 이력 익명 신고. analysisId는 내 이력에 존재해야 한다(서버가 소유권 검증).
+  /// 최초 신고는 201(submitted), 같은 분석 재신고는 200(alreadyReported·멱등).
+  /// 원문·발신번호·userId는 담기지 않고 위험도·유형·비식별 스냅샷만 저장된다.
+  static Future<ReportOutcome> report(
+    int analysisId, {
+    required ReportType type,
+  }) async {
+    try {
+      final res = await AuthApi.sendAuthorized((headers) => http
+          .post(_uri('/api/v1/analyses/$analysisId/report'),
+              headers: headers, body: jsonEncode({'type': type.wire}))
+          .timeout(_timeout));
+      if (res.statusCode == 201) return ReportOutcome.submitted;
+      if (_isSuccess(res)) return ReportOutcome.alreadyReported; // 200 멱등
+      return ReportOutcome.failed;
+    } catch (_) {
+      return ReportOutcome.failed;
+    }
+  }
+
   /// 개인 탐지 통계. 실패 시 null.
   static Future<StatisticsOverview?> getStatistics({
     StatisticsPeriod period = StatisticsPeriod.last30Days,
@@ -263,6 +283,20 @@ enum FeedbackType {
   final String wire;
   const FeedbackType(this.wire);
 }
+
+/// 신고 유형(백엔드 ReportType). label은 UI 표기용.
+enum ReportType {
+  phishing('PHISHING', '피싱·사기'),
+  spam('SPAM', '스팸·광고'),
+  other('OTHER', '기타');
+
+  final String wire;
+  final String label;
+  const ReportType(this.wire, this.label);
+}
+
+/// 신고 결과. 최초 신고(submitted)·이미 신고됨(alreadyReported·멱등)·실패(failed).
+enum ReportOutcome { submitted, alreadyReported, failed }
 
 /// 통계 조회 기간.
 enum StatisticsPeriod {
