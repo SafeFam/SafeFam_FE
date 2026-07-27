@@ -38,6 +38,9 @@ void main() async {
     );
   };
 
+  // 로그아웃 시 이 기기의 FCM 등록을 서버에서 해제한다(토큰이 유효할 때 실행됨).
+  AuthApi.onBeforeLogout = DeviceApi.unregisterDevice;
+
   runApp(const SafeFamApp());
 }
 
