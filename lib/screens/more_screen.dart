@@ -5,6 +5,7 @@ import 'results.dart';
 import 'family_flow.dart';
 import 'mypage_screen.dart';
 import 'login_screen.dart';
+import 'whitelist_screen.dart';
 import '../services/auth_api.dart';
 
 /// 더보기(설정) — 홈 톱니바퀴로 진입(pushed). 하단 탭 없음.
@@ -216,6 +217,13 @@ class _MoreScreenState extends State<MoreScreen> {
         children: [
           const SectionLabel('탐지·알림'),
           _detectionCard(),
+          const SizedBox(height: 12),
+          SfCard(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: _link(Icons.verified_user_outlined, '신뢰 발신자 관리',
+                onTap: () => Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => const WhitelistScreen()))),
+          ),
           const SizedBox(height: 16),
           const SectionLabel('보기 설정 · 누구나'),
           SfCard(
