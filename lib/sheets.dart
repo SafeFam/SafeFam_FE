@@ -105,7 +105,6 @@ void showChatbotSheet(BuildContext c, {AnalysisResult? result}) {
 /// 신고 유형을 고르고 익명 접수한다. 최초 신고/이미 신고됨/실패를 토스트로 안내.
 void showReportSheet(BuildContext c, {required AnalysisResult result}) {
   var selected = ReportType.phishing;
-  var busy = false;
 
   void toast(String msg) {
     if (!c.mounted) return;
@@ -114,23 +113,22 @@ void showReportSheet(BuildContext c, {required AnalysisResult result}) {
       ..showSnackBar(SnackBar(content: Text(msg)));
   }
 
+  // 시트를 먼저 닫고 요청을 보낸다(share 시트와 동일 패턴). 시트를 닫아 두면
+  // 요청 중 사용자가 시트를 드래그로 닫아도 결과 화면이 잘못 pop되지 않는다.
+  Future<void> submit() async {
+    Navigator.pop(c);
+    final outcome = await AnalysisApi.report(result.analysisId, type: selected);
+    toast(switch (outcome) {
+      ReportOutcome.submitted => '익명으로 신고했어요. 고맙습니다.',
+      ReportOutcome.alreadyReported => '이미 신고된 문자예요.',
+      ReportOutcome.failed => '신고에 실패했어요. 잠시 후 다시 시도해 주세요.',
+    });
+  }
+
   _showSheet(
     c,
     StatefulBuilder(
       builder: (ctx, setSheet) {
-        Future<void> submit() async {
-          setSheet(() => busy = true);
-          final outcome =
-              await AnalysisApi.report(result.analysisId, type: selected);
-          if (!c.mounted) return;
-          Navigator.pop(c); // 시트를 닫고 바깥 컨텍스트로 결과 안내
-          toast(switch (outcome) {
-            ReportOutcome.submitted => '익명으로 신고했어요. 고맙습니다.',
-            ReportOutcome.alreadyReported => '이미 신고된 문자예요.',
-            ReportOutcome.failed => '신고에 실패했어요. 잠시 후 다시 시도해 주세요.',
-          });
-        }
-
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
@@ -172,14 +170,14 @@ void showReportSheet(BuildContext c, {required AnalysisResult result}) {
               children: [
                 for (final t in ReportType.values)
                   GestureDetector(
-                    onTap: busy ? null : () => setSheet(() => selected = t),
+                    onTap: () => setSheet(() => selected = t),
                     child: SfChip(t.label, selected: selected == t),
                   ),
               ],
             ),
             const SizedBox(height: 16),
-            SfButton(busy ? '신고 중…' : '익명으로 신고하기',
-                icon: Icons.flag_outlined, onTap: busy ? null : submit),
+            SfButton('익명으로 신고하기',
+                icon: Icons.flag_outlined, onTap: submit),
           ],
         );
       },
