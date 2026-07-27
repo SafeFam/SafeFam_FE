@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../models.dart' show RiskLevel, RiskMeta;
+import '../util/masking.dart' show Pii;
 import 'auth_api.dart' show AuthApi;
 
 /// 문자 분석·탐지 이력·통계 서버 통신 담당.
@@ -83,7 +84,9 @@ class AnalysisApi {
               body: jsonEncode({
                 if (clientMessageId != null) 'clientMessageId': clientMessageId,
                 if (sender != null) 'sender': sender,
-                'content': content,
+                // 전송 전 개인정보 1차 마스킹(§11, 개인정보보호법). 발신번호는
+                // 화이트리스트 필터가 쓰므로 content만 가린다.
+                'content': Pii.mask(content),
                 // OffsetDateTime 계약 → UTC ISO8601('...Z')로 전송.
                 'receivedAt': receivedAt.toUtc().toIso8601String(),
                 'source': source.wire,
