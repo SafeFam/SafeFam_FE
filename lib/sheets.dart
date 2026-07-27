@@ -144,7 +144,7 @@ void showReportSheet(BuildContext c, {required AnalysisResult result}) {
                   Icon(Icons.lock_outline, color: AppColors.blue, size: 22),
                   SizedBox(width: 9),
                   Expanded(
-                      child: Text('이름·발신번호·원문 없이, 위험도와 유형만 익명으로 접수돼요.',
+                      child: Text('원문·발신번호·사용자 ID 없이, 위험도와 유형만 익명으로 접수돼요.',
                           style: AppText.caption)),
                 ],
               ),
