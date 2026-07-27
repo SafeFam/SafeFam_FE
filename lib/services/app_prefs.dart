@@ -64,4 +64,35 @@ class AppPrefs {
       await _storage.delete(key: _familyNameKey(linkId));
     } catch (_) {}
   }
+
+  /// FCM 기기 등록 id. 로그아웃 때 이 id로 서버 기기를 해제하려면 등록 응답의
+  /// deviceId를 보관해 둬야 한다. 동일 기기라도 다른 계정으로 로그인하면
+  /// 서버가 새 id를 발급하므로, 등록 때마다 최신값으로 덮어쓴다.
+  static const String _kDeviceId = 'fcmDeviceId';
+
+  /// 저장된 기기 id. 없거나 못 읽으면 null.
+  static Future<int?> deviceId() async {
+    try {
+      final v = await _storage.read(key: _kDeviceId);
+      return (v == null || v.isEmpty) ? null : int.tryParse(v);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 기기 id 저장(등록 성공 시).
+  static Future<void> setDeviceId(int id) async {
+    try {
+      await _storage.write(key: _kDeviceId, value: '$id');
+    } catch (_) {
+      // 저장 실패 시 다음 로그아웃에서 해제를 못 할 뿐, 등록 자체는 유효하다.
+    }
+  }
+
+  /// 기기 id 삭제(해제 후).
+  static Future<void> removeDeviceId() async {
+    try {
+      await _storage.delete(key: _kDeviceId);
+    } catch (_) {}
+  }
 }

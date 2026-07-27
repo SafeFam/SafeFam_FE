@@ -97,6 +97,12 @@ class AuthApi {
   /// 보내도록 연결한다.
   static void Function()? onSessionExpired;
 
+  /// 명시적 로그아웃 직전(토큰이 아직 유효할 때) 호출된다. `main.dart`가
+  /// FCM 기기 해제(`DeviceApi.unregisterDevice`)로 연결해, 로그아웃 후에도
+  /// 이전 계정으로 푸시가 가지 않게 한다. auth가 기기 계층에 역의존하지 않도록
+  /// (onSessionExpired와 동일하게) 훅으로 둔다.
+  static Future<void> Function()? onBeforeLogout;
+
   /// 진행 중인 재발급. refreshToken은 1회용(회전)이라 동시에 두 번 호출하면
   /// 백엔드가 재사용을 탈취로 간주해 세션을 끊는다(SafeFam_BE #56).
   /// 그래서 동시에 401을 받은 요청들이 하나의 재발급 결과를 공유하게 한다.
@@ -451,6 +457,12 @@ class AuthApi {
 
   /// 로그아웃. 서버 토큰 무효화 후 로컬 토큰 폐기.
   static Future<void> logout() async {
+    // 토큰이 아직 유효할 때 FCM 기기부터 해제한다(이후 이전 계정 푸시 차단).
+    try {
+      await onBeforeLogout?.call();
+    } catch (_) {
+      // 기기 해제 실패해도 로그아웃은 계속 진행한다.
+    }
     try {
       if (refreshToken != null) {
         await http
