@@ -77,5 +77,9 @@
             <action android:name="android.intent.action.SENDTO"/>
             <data android:scheme="sms"/>
         </intent>
+        <!-- flutter_tts: TTS 엔진 가시성 (Android 11+) — 음성 안내 -->
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE"/>
+        </intent>
     </queries>
 </manifest>
