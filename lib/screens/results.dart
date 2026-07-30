@@ -53,11 +53,40 @@ PreferredSizeWidget _resultBar(BuildContext c, String title,
   );
 }
 
+/// 음성 안내 설정이 켜져 있을 때만 '들려주기' 버튼을 노출한다. 설정을 반응형으로
+/// 관찰해, 더보기에서 토글하면 결과 화면에도 즉시 반영된다.
+class _VoiceListenSection extends StatelessWidget {
+  final String text;
+  const _VoiceListenSection(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: AppSettings.instance.voice,
+      builder: (context, on, _) => on
+          ? Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: _ListenButton(text))
+          : const SizedBox.shrink(),
+    );
+  }
+}
+
 /// 결과를 소리로 읽어주는 버튼. TTS 재생 상태에 따라 '다시 들려주기'/'멈춤'을
-/// 토글한다. 음성 안내 설정이 꺼져 있으면 호출부에서 노출하지 않는다.
-class _ListenButton extends StatelessWidget {
+/// 토글한다. 이 버튼이 화면에서 사라지면(라우트 이탈·음성 설정 off) 재생을 멈춘다.
+class _ListenButton extends StatefulWidget {
   final String text;
   const _ListenButton(this.text);
+  @override
+  State<_ListenButton> createState() => _ListenButtonState();
+}
+
+class _ListenButtonState extends State<_ListenButton> {
+  @override
+  void dispose() {
+    TtsService.instance.stop();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -72,7 +101,7 @@ class _ListenButton extends StatelessWidget {
             await TtsService.instance.stop();
             return;
           }
-          final ok = await TtsService.instance.speak(text);
+          final ok = await TtsService.instance.speak(widget.text);
           if (!ok && context.mounted) {
             ScaffoldMessenger.of(context)
               ..hideCurrentSnackBar()
@@ -309,11 +338,8 @@ class _ResultScreenState extends State<ResultScreen> {
             const SizedBox(height: 12),
             Text(_resultTitle(r, level), style: AppText.titleResult),
           ]),
-          // 음성 안내 설정이 켜져 있으면 결과를 소리로 들려주는 버튼을 노출한다.
-          if (AppSettings.instance.voice.value) ...[
-            const SizedBox(height: 12),
-            _ListenButton(_spokenResult(r, level)),
-          ],
+          // 음성 안내 설정이 켜져 있으면 결과를 소리로 들려주는 버튼을 노출한다(반응형).
+          _VoiceListenSection(_spokenResult(r, level)),
           if (partial) ...[
             const SizedBox(height: 12),
             _partialBanner(),
@@ -766,8 +792,7 @@ class VoiceResultScreen extends StatelessWidget {
             SizedBox(height: 12),
             Text('보이스피싱이에요', style: AppText.titleResult),
           ]),
-          const SizedBox(height: 12),
-          const _ListenButton(
+          const _VoiceListenSection(
               '보이스피싱이에요. 검찰 수사관을 사칭하며 안전계좌로 돈을 옮기라고 했어요. 진짜 수사기관은 이렇게 하지 않아요.'),
           const SizedBox(height: 16),
           SfCard(
@@ -817,8 +842,7 @@ class UrlResultScreen extends StatelessWidget {
             SizedBox(height: 12),
             RiskBadge(RiskLevel.high, text: '위험 사이트'),
           ]),
-          const SizedBox(height: 12),
-          const _ListenButton(
+          const _VoiceListenSection(
               '위험한 사이트예요. 택배사를 흉내 낸 가짜 결제 페이지예요. 접속하거나 정보를 넣지 마세요.'),
           const SizedBox(height: 16),
           SfCard(

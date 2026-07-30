@@ -32,11 +32,12 @@ class TtsService {
     try {
       await _ensureInit();
       await _tts.stop();
-      // speak가 완료까지 대기하는 기기도 있으니 상태를 먼저 세워 UI가 바로 바뀌게
-      // 한다. 완료·취소·오류는 핸들러가 다시 false로 되돌린다.
-      speaking.value = true;
-      await _tts.speak(text);
-      return true;
+      // flutter_tts는 요청이 정상 접수되면 1을 준다. 1이 아니면 실제로 재생이
+      // 시작되지 않은 것이므로 실패로 처리한다(완료·취소·오류는 핸들러가 정리).
+      final result = await _tts.speak(text);
+      final ok = result == 1;
+      speaking.value = ok;
+      return ok;
     } catch (_) {
       speaking.value = false;
       return false;
