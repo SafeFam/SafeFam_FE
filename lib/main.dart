@@ -6,6 +6,7 @@ import 'package:safefam/services/notification_service.dart';
 import 'firebase_options.dart';
 import 'theme/app_theme.dart';
 import 'services/app_prefs.dart';
+import 'services/app_settings.dart';
 import 'services/auth_api.dart';
 import 'services/device_api.dart';
 import 'widgets/main_scaffold.dart';
@@ -41,6 +42,9 @@ void main() async {
   // 로그아웃 시 이 기기의 FCM 등록을 서버에서 해제한다(토큰이 유효할 때 실행됨).
   AuthApi.onBeforeLogout = DeviceApi.unregisterDevice;
 
+  // 접근성 설정(큰 글씨·음성)을 미리 복구해 첫 프레임부터 반영되게 한다.
+  await AppSettings.instance.load();
+
   runApp(const SafeFamApp());
 }
 
@@ -54,6 +58,20 @@ class SafeFamApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: buildSafeFamTheme(),
       navigatorKey: NotificationService.navigatorKey,
+      // 큰 글씨 토글을 앱 전체에 적용한다. 켜면 고정 배율로 확대하고, 끄면
+      // 시스템 글꼴 크기 설정을 그대로 존중한다(임의로 1.0으로 덮지 않음).
+      builder: (context, child) => ValueListenableBuilder<bool>(
+        valueListenable: AppSettings.instance.bigText,
+        builder: (context, big, _) {
+          if (!big || child == null) return child ?? const SizedBox.shrink();
+          return MediaQuery(
+            data: MediaQuery.of(context).copyWith(
+                textScaler:
+                    const TextScaler.linear(AppSettings.bigTextScale)),
+            child: child,
+          );
+        },
+      ),
       home: const _Bootstrap(),
     );
   }

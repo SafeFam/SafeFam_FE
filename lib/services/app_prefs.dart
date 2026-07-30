@@ -95,4 +95,39 @@ class AppPrefs {
       await _storage.delete(key: _kDeviceId);
     } catch (_) {}
   }
+
+  // ── 접근성 설정(큰 글씨·음성 안내). 기기 로컬에만 둔다. ──
+  static const String _kBigText = 'bigText';
+  static const String _kVoiceEnabled = 'voiceEnabled';
+
+  /// 큰 글씨 사용 여부(기본 off). 못 읽으면 off로 본다.
+  static Future<bool> bigText() async {
+    try {
+      return await _storage.read(key: _kBigText) == 'true';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<void> setBigText(bool v) async {
+    try {
+      await _storage.write(key: _kBigText, value: '$v');
+    } catch (_) {}
+  }
+
+  /// 음성 안내(TTS) 사용 여부(**기본 on** — 고령층 배려). 키가 없으면 on.
+  static Future<bool> voiceEnabled() async {
+    try {
+      final v = await _storage.read(key: _kVoiceEnabled);
+      return v == null ? true : v == 'true';
+    } catch (_) {
+      return true;
+    }
+  }
+
+  static Future<void> setVoiceEnabled(bool v) async {
+    try {
+      await _storage.write(key: _kVoiceEnabled, value: '$v');
+    } catch (_) {}
+  }
 }

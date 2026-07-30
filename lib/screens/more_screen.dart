@@ -7,6 +7,7 @@ import 'mypage_screen.dart';
 import 'login_screen.dart';
 import 'whitelist_screen.dart';
 import '../services/auth_api.dart';
+import '../services/app_settings.dart';
 
 /// 더보기(설정) — 홈 톱니바퀴로 진입(pushed). 하단 탭 없음.
 class MoreScreen extends StatefulWidget {
@@ -16,6 +17,7 @@ class MoreScreen extends StatefulWidget {
 }
 
 class _MoreScreenState extends State<MoreScreen> {
+  // 접근성 설정. 앱 시작 시 AppSettings.load()로 복구된 값을 initState에서 읽는다.
   bool _big = false;
   bool _voice = true;
 
@@ -28,6 +30,8 @@ class _MoreScreenState extends State<MoreScreen> {
   @override
   void initState() {
     super.initState();
+    _big = AppSettings.instance.bigText.value;
+    _voice = AppSettings.instance.voice.value;
     _loadSettings();
   }
 
@@ -228,9 +232,15 @@ class _MoreScreenState extends State<MoreScreen> {
           const SectionLabel('보기 설정 · 누구나'),
           SfCard(
             child: Column(children: [
-              _toggle(Icons.text_fields, '글씨 더 크게', _big, (v) => setState(() => _big = v)),
+              _toggle(Icons.text_fields, '글씨 더 크게', _big, (v) {
+                AppSettings.instance.setBigText(v);
+                setState(() => _big = v);
+              }, sub: '앱 전체 글씨가 커져요'),
               const Divider(color: AppColors.line, height: 24),
-              _toggle(Icons.volume_up_outlined, '음성으로 읽어주기', _voice, (v) => setState(() => _voice = v)),
+              _toggle(Icons.volume_up_outlined, '음성으로 읽어주기', _voice, (v) {
+                AppSettings.instance.setVoice(v);
+                setState(() => _voice = v);
+              }, sub: '분석 결과를 소리로 들려드려요'),
             ]),
           ),
           const SizedBox(height: 16),
