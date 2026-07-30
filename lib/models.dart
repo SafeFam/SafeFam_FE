@@ -35,9 +35,3 @@ class Signal {
   final String desc;
   const Signal(this.icon, this.title, this.desc);
 }
-
-const sampleTrends = <(String, RiskLevel, String)>[
-  ('택배·배송 사칭', RiskLevel.high, '많음'),
-  ('검찰·금감원 사칭', RiskLevel.med, '주의'),
-  ('저금리 대출 사기', RiskLevel.med, '주의'),
-];

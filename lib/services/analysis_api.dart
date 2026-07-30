@@ -254,6 +254,21 @@ class AnalysisApi {
     }
   }
 
+  /// 월간 피싱 트렌드(전체 사용자 비식별 집계). [month]는 `YYYY-MM`(없으면 당월).
+  /// 홈 트렌드 카드용. 실패 시 null.
+  static Future<TrendOverview?> getTrends({String? month}) async {
+    try {
+      final res = await AuthApi.sendAuthorized((headers) => http
+          .get(_uri('/api/v1/statistics/trends', {'month': month}),
+              headers: headers)
+          .timeout(_timeout));
+      final data = _data(res);
+      return data == null ? null : TrendOverview.fromJson(data);
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// LocalDate 쿼리(from/to)는 날짜만(YYYY-MM-DD) 보낸다.
   static String _isoDate(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-'
@@ -735,4 +750,65 @@ class StatisticsOverview {
           _parseList(j, 'categoryDistribution', CategoryBucket.fromJson),
     );
   }
+}
+
+/// 피싱 유형별 월간 순위(트렌드).
+class PhishingTypeTrend {
+  final int rank;
+  final PhishingCategory? category;
+  final int count;
+  const PhishingTypeTrend({
+    required this.rank,
+    this.category,
+    required this.count,
+  });
+
+  factory PhishingTypeTrend.fromJson(Map<String, dynamic> j) =>
+      PhishingTypeTrend(
+        rank: (j['rank'] as num?)?.toInt() ?? 0,
+        category: PhishingCategory.fromWire(j['category'] as String?),
+        count: (j['count'] as num?)?.toInt() ?? 0,
+      );
+}
+
+/// 위험 키워드 월간 순위(비식별 표준 키워드).
+class RiskKeywordTrend {
+  final int rank;
+  final String keyword;
+  final int count;
+  const RiskKeywordTrend({
+    required this.rank,
+    required this.keyword,
+    required this.count,
+  });
+
+  factory RiskKeywordTrend.fromJson(Map<String, dynamic> j) => RiskKeywordTrend(
+        rank: (j['rank'] as num?)?.toInt() ?? 0,
+        keyword: (j['keyword'] as String?) ?? '',
+        count: (j['count'] as num?)?.toInt() ?? 0,
+      );
+}
+
+/// 월간 피싱 트렌드 카드(TrendCardResponse). 전체 사용자 비식별 집계.
+class TrendOverview {
+  final String month; // YYYY-MM
+  final int sampleSize;
+  final List<PhishingTypeTrend> topPhishingTypes;
+  final List<RiskKeywordTrend> topRiskKeywords;
+
+  const TrendOverview({
+    required this.month,
+    required this.sampleSize,
+    required this.topPhishingTypes,
+    required this.topRiskKeywords,
+  });
+
+  factory TrendOverview.fromJson(Map<String, dynamic> j) => TrendOverview(
+        month: (j['month'] as String?) ?? '',
+        sampleSize: (j['sampleSize'] as num?)?.toInt() ?? 0,
+        topPhishingTypes:
+            _parseList(j, 'topPhishingTypes', PhishingTypeTrend.fromJson),
+        topRiskKeywords:
+            _parseList(j, 'topRiskKeywords', RiskKeywordTrend.fromJson),
+      );
 }
