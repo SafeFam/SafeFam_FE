@@ -138,17 +138,18 @@ IconData _indicatorIcon(IndicatorType? t) => switch (t) {
       null => Icons.info_outline,
     };
 
-/// 결과 제목. 위험도·피싱 유형으로 문장을 만든다.
-String _resultTitle(AnalysisResult r) {
-  if (r.riskLevel == RiskLevel.low) return '안전한 문자예요';
+/// 결과 제목. 위험도·피싱 유형으로 문장을 만든다(결과가 있는 상태에서만 호출).
+String _resultTitle(AnalysisResult r, RiskLevel level) {
+  if (level == RiskLevel.low) return '안전한 문자예요';
   final cat = r.category?.label;
   if (cat != null) return '$cat 문자예요';
-  return r.riskLevel == RiskLevel.high ? '위험한 문자예요' : '주의가 필요한 문자예요';
+  return level == RiskLevel.high ? '위험한 문자예요' : '주의가 필요한 문자예요';
 }
 
 /// result 미지정(오버레이 dev 프리뷰) 시 쓰는 데모 결과.
 final AnalysisResult _demoResult = AnalysisResult(
   analysisId: 0,
+  status: AnalysisStatus.completed,
   riskScore: 92,
   riskLevel: RiskLevel.high,
   category: PhishingCategory.governmentAgency,
@@ -238,7 +239,17 @@ class _ResultScreenState extends State<ResultScreen> {
   @override
   Widget build(BuildContext context) {
     final r = _r;
-    final level = r.riskLevel;
+    // 실패는 '안전'이 아니라 별도 실패 안내(§전달사항 5).
+    if (r.status == AnalysisStatus.failed) return _failureScaffold(context);
+    // 아직 처리 중이면 결과가 없다. 정상 흐름에선 상세 화면이 폴링해 종료 상태만
+    // 넘겨주지만, 직접 진입 대비 방어적으로 분석 중 화면을 보여준다.
+    if (!r.hasResult) return _pendingScaffold(context);
+
+    // 여기부터는 완료/부분성공 — 등급·점수를 신뢰할 수 있다. 값이 있는데 손상된
+    // 경우만 fail-secure로 high/0.
+    final level = r.riskLevel ?? RiskLevel.high;
+    final score = r.riskScore ?? 0;
+    final partial = r.status == AnalysisStatus.partialSuccess;
     return Scaffold(
       appBar: _resultBar(context, '분석 결과',
           result: r, onDelete: _isSaved && !_busy ? _confirmDelete : null),
@@ -250,11 +261,15 @@ class _ResultScreenState extends State<ResultScreen> {
             const SizedBox(height: 12),
             RiskBadge(level),
             const SizedBox(height: 12),
-            Text(_resultTitle(r), style: AppText.titleResult),
+            Text(_resultTitle(r, level), style: AppText.titleResult),
           ]),
+          if (partial) ...[
+            const SizedBox(height: 12),
+            _partialBanner(),
+          ],
           const SizedBox(height: 16),
           // 3중 스코어 게이지
-          Center(child: ScoreGauge(r.riskScore, level)),
+          Center(child: ScoreGauge(score, level)),
           const SizedBox(height: 8),
           if (r.explanation.isNotEmpty) ...[
             SfCard(
@@ -416,6 +431,72 @@ class _ResultScreenState extends State<ResultScreen> {
     );
   }
 
+  /// 부분 성공 안내 배너 — 점수·등급은 보여주되 일부 분석이 빠졌음을 알린다.
+  Widget _partialBanner() => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+            color: AppColors.med.withOpacity(0.10),
+            borderRadius: BorderRadius.circular(14)),
+        child: Row(
+          children: const [
+            Icon(Icons.info_outline, color: AppColors.med, size: 20),
+            SizedBox(width: 9),
+            Expanded(
+                child: Text('일부 분석을 완료하지 못했어요. 아래 결과는 가능한 항목만으로 계산됐어요.',
+                    style: TextStyle(fontSize: 14, color: AppColors.t1, height: 1.4))),
+          ],
+        ),
+      );
+
+  /// 분석 실패 화면 — '안전'으로 오인하지 않도록 별도 안내.
+  Widget _failureScaffold(BuildContext context) => Scaffold(
+        appBar: _resultBar(context, '분석 결과', share: false),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const CharacterDisc(120),
+                const SizedBox(height: 16),
+                const Text('분석을 완료하지 못했어요', style: AppText.titleResult),
+                const SizedBox(height: 8),
+                const Text('잠시 후 다시 시도해 주세요.\n안전하다는 뜻이 아니니, 의심되면 링크·전화에 응하지 마세요.',
+                    textAlign: TextAlign.center, style: AppText.body),
+                const SizedBox(height: 20),
+                if (_isSaved && !_busy)
+                  SizedBox(
+                    width: 200,
+                    child: SfButton('이력에서 삭제',
+                        icon: Icons.delete_outline,
+                        variant: SfBtn.ghost,
+                        onTap: _confirmDelete),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+  /// 처리 중 화면(방어용) — 상세 화면 폴링이 정상 동작하면 거의 보이지 않는다.
+  Widget _pendingScaffold(BuildContext context) => Scaffold(
+        appBar: _resultBar(context, '분석 결과', share: false),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: const [
+              CharacterDisc(120),
+              SizedBox(height: 18),
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('문자를 분석하고 있어요', style: AppText.titleScreen),
+              SizedBox(height: 6),
+              Text('잠시만 기다려 주세요', style: AppText.caption),
+            ],
+          ),
+        ),
+      );
+
   /// 정탐/오탐/미탐 피드백 카드(저장된 이력에서만 표시).
   Widget _feedbackCard() {
     return SfCard(
@@ -473,59 +554,145 @@ class _ResultScreenState extends State<ResultScreen> {
   }
 }
 
-/// 6 · 탐지 이력 상세 — id로 분석 결과를 불러와 [ResultScreen]으로 렌더.
+/// 6 · 탐지 이력 상세 — id로 분석 결과를 불러와 [ResultScreen]으로 렌더한다.
+///
+/// 분석이 비동기라 접수 직후엔 아직 PENDING/PROCESSING일 수 있다. 그래서 종료
+/// 상태(COMPLETED/PARTIAL_SUCCESS/FAILED)가 될 때까지 상세를 폴링한다. 폴링은
+/// 화면이 사라지면(dispose) 중단되고, 최대 대기 시간을 넘기면 안내로 전환한다.
 class AnalysisDetailScreen extends StatefulWidget {
   final int analysisId;
-  const AnalysisDetailScreen({super.key, required this.analysisId});
+
+  /// 수동 검사 원문(있으면 결과의 '받은 문자' 카드에 표시).
+  final String? messageText;
+
+  const AnalysisDetailScreen({
+    super.key,
+    required this.analysisId,
+    this.messageText,
+  });
   @override
   State<AnalysisDetailScreen> createState() => _AnalysisDetailScreenState();
 }
 
 class _AnalysisDetailScreenState extends State<AnalysisDetailScreen> {
-  AnalysisResult? _result;
-  bool _loading = true;
+  static const _pollInterval = Duration(seconds: 2);
+  static const _maxWait = Duration(seconds: 30);
+  static const _maxConsecutiveErrors = 3;
+
+  AnalysisResult? _result; // 종료 상태로 확정된 결과
+  bool _loading = true; // 첫 로드 또는 처리 중(폴링 진행)
+  bool _timedOut = false; // 최대 대기 초과했는데 아직 처리 중(false면 조회 실패)
+  bool _disposed = false;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _startPolling();
   }
 
-  Future<void> _load() async {
-    setState(() => _loading = true);
-    final r = await AnalysisApi.getAnalysis(widget.analysisId);
+  @override
+  void dispose() {
+    // 화면이 사라진 뒤 폴링 루프가 setState를 호출하지 않도록 취소 플래그를 세운다.
+    _disposed = true;
+    super.dispose();
+  }
+
+  /// 종료 상태가 될 때까지 상세를 주기적으로 조회한다. 일시적 네트워크 오류 한 번으로
+  /// 실패 처리하지 않도록 연속 실패가 임계치를 넘을 때만 에러로 전환한다.
+  Future<void> _startPolling() async {
     if (!mounted) return;
     setState(() {
-      _loading = false;
-      _result = r;
+      _loading = true;
+      _timedOut = false;
     });
+    final deadline = DateTime.now().add(_maxWait);
+    var consecutiveErrors = 0;
+    while (true) {
+      final r = await AnalysisApi.getAnalysis(widget.analysisId);
+      if (_disposed || !mounted) return;
+      if (r != null) {
+        consecutiveErrors = 0;
+        if (r.status.isTerminal) {
+          setState(() {
+            _result = r;
+            _loading = false;
+          });
+          return; // 폴링 중단
+        }
+        // 아직 처리 중 → 계속 폴링
+      } else {
+        consecutiveErrors++;
+        if (consecutiveErrors >= _maxConsecutiveErrors) {
+          // _timedOut=false로 두면 build가 조회 실패 안내로 분기한다.
+          setState(() => _loading = false);
+          return;
+        }
+      }
+      if (!DateTime.now().isBefore(deadline)) {
+        setState(() {
+          _loading = false;
+          _timedOut = true;
+        });
+        return;
+      }
+      await Future.delayed(_pollInterval);
+      if (_disposed || !mounted) return;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_result != null) return ResultScreen(result: _result);
+    final r = _result;
+    if (r != null && r.status.isTerminal) {
+      return ResultScreen(result: r, messageText: widget.messageText);
+    }
     return Scaffold(
       appBar: _resultBar(context, '분석 결과', share: false),
       body: Center(
-        child: _loading
-            ? const CircularProgressIndicator()
-            : Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.cloud_off_outlined,
-                      color: AppColors.t3, size: 40),
-                  const SizedBox(height: 10),
-                  const Text('결과를 불러오지 못했어요', style: AppText.body),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: 160,
-                    child: SfButton('다시 시도',
-                        icon: Icons.refresh,
-                        variant: SfBtn.ghost,
-                        onTap: _load),
-                  ),
-                ],
-              ),
+        child: _loading ? _analyzingBody() : _retryBody(),
+      ),
+    );
+  }
+
+  Widget _analyzingBody() => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: const [
+          CharacterDisc(120),
+          SizedBox(height: 18),
+          CircularProgressIndicator(),
+          SizedBox(height: 16),
+          Text('문자를 분석하고 있어요', style: AppText.titleScreen),
+          SizedBox(height: 6),
+          Text('잠시만 기다려 주세요', style: AppText.caption),
+        ],
+      );
+
+  Widget _retryBody() {
+    // 지연(timeout)과 조회 실패를 구분해 안내한다.
+    final msg = _timedOut ? '분석이 조금 오래 걸리고 있어요' : '결과를 불러오지 못했어요';
+    final sub = _timedOut ? '잠시 후 다시 확인해 주세요.' : null;
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(_timedOut ? Icons.hourglass_empty : Icons.cloud_off_outlined,
+              color: AppColors.t3, size: 40),
+          const SizedBox(height: 10),
+          Text(msg, style: AppText.body),
+          if (sub != null) ...[
+            const SizedBox(height: 4),
+            Text(sub, style: AppText.caption),
+          ],
+          const SizedBox(height: 12),
+          SizedBox(
+            width: 180,
+            child: SfButton('다시 확인',
+                icon: Icons.refresh,
+                variant: SfBtn.ghost,
+                onTap: _startPolling),
+          ),
+        ],
       ),
     );
   }

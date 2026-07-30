@@ -375,12 +375,15 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   Widget _historyTile(AnalysisListItem item) {
+    // 완료/부분성공이면 위험도(level)가 있고, 처리 중/실패면 null → 상태로 표시.
     final level = item.riskLevel;
     final title = item.category?.label ?? '문자 분석';
     final metaParts = [
       if (item.maskedSender.isNotEmpty) item.maskedSender,
       if (item.analyzedAt != null) _formatDate(item.analyzedAt!),
     ];
+    final iconColor = level?.color ?? _statusColor(item.status);
+    final iconData = level?.icon ?? _statusIcon(item.status);
     return InkWell(
       onTap: () => _openDetail(item),
       child: Container(
@@ -389,8 +392,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
             border: Border(bottom: BorderSide(color: AppColors.line))),
         child: Row(
           children: [
-            IconDisc(level.icon,
-                color: level.color, bg: level.color.withOpacity(0.12)),
+            IconDisc(iconData,
+                color: iconColor, bg: iconColor.withOpacity(0.12)),
             const SizedBox(width: 13),
             Expanded(
               child: Column(
@@ -407,7 +410,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                 fontSize: 16, fontWeight: FontWeight.w600)),
                       ),
                       const SizedBox(width: 8),
-                      RiskBadge(level, large: false),
+                      if (level != null)
+                        RiskBadge(level, large: false)
+                      else
+                        _statusChip(item.status),
                     ],
                   ),
                   if (item.messagePreview.isNotEmpty) ...[
@@ -431,6 +437,26 @@ class _HistoryScreenState extends State<HistoryScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  // ── 아직 결과가 없는 항목(처리 중/실패)의 상태 표시 ──
+  String _statusLabel(AnalysisStatus s) =>
+      s == AnalysisStatus.failed ? '분석 실패' : '분석 중';
+  Color _statusColor(AnalysisStatus s) =>
+      s == AnalysisStatus.failed ? AppColors.t3 : AppColors.blue;
+  IconData _statusIcon(AnalysisStatus s) =>
+      s == AnalysisStatus.failed ? Icons.error_outline : Icons.hourglass_empty;
+
+  Widget _statusChip(AnalysisStatus s) {
+    final c = _statusColor(s);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+          color: c.withOpacity(0.12), borderRadius: BorderRadius.circular(11)),
+      child: Text(_statusLabel(s),
+          style:
+              TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: c)),
     );
   }
 

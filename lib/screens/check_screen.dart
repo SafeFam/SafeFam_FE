@@ -28,6 +28,8 @@ class _CheckScreenState extends State<CheckScreen> {
       return;
     }
     setState(() => _loading = true);
+    // 분석은 비동기 접수(202)라 여기선 analysisId만 받는다. 실제 결과는 상세 화면이
+    // 종료 상태까지 폴링해 렌더한다.
     final outcome = await AnalysisApi.analyze(
       content: text,
       receivedAt: DateTime.now(),
@@ -43,8 +45,11 @@ class _CheckScreenState extends State<CheckScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(
-          builder: (_) =>
-              ResultScreen(result: outcome.result!, messageText: text)),
+        builder: (_) => AnalysisDetailScreen(
+          analysisId: outcome.accepted!.analysisId,
+          messageText: text,
+        ),
+      ),
     );
   }
 

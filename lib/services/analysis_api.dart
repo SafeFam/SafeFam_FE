@@ -13,22 +13,29 @@ import 'auth_api.dart' show AuthApi;
 ///  - 공통 응답 ApiResponse { status:"SUCCESS"|"ERROR", message, data }
 ///  - 목록은 PageResponse { content, page, size, totalElements, totalPages, last }
 ///
-///  문자 분석 /api/v1/analyses
+///  문자 분석 /api/v1/analyses  (★2026-07-30 비동기 전환 — SafeFam_BE #68까지 머지)
 ///   - POST                요청 { clientMessageId?, sender?, content(필수,≤5000),
-///                               receivedAt(OffsetDateTime), source: AUTO|MANUAL } → AnalysisResponse
+///                               receivedAt(OffsetDateTime), source: AUTO|MANUAL }
+///                               → **202 Accepted**, data { analysisId, status }
+///                               (완성 결과 아님! 접수만. 같은 clientMessageId면 기존 건을
+///                                현재 status로 반환 — 멱등이라 항상 PENDING 가정 금지)
 ///                         ※ 유저 기준 10회/분 레이트리밋 → 초과 시 429
 ///                           (ERROR, message="분석 요청 한도를 초과했습니다…", Retry-After 없음)
 ///   - GET                 이력 목록. 쿼리 page,size,riskLevel,category,from,to
 ///                               → PageResponse<AnalysisListItem>
 ///                               (maskedSender·messagePreview는 서버가 이미 마스킹)
-///   - GET    /{id}        상세(AnalysisResponse)
+///   - GET    /{id}        상세(AnalysisResponse). ★접수 후 종료 상태까지 폴링 대상.
 ///   - DELETE /{id}        204
 ///   - POST   /{id}/feedback  { type: CORRECT|FALSE_POSITIVE|FALSE_NEGATIVE, comment?(≤500) }
 ///
-///  AnalysisResponse: { analysisId, riskScore(0~100), riskLevel: LOW|MEDIUM|HIGH,
-///   category, explanation, scoreBreakdown{ llmScore, urlScore, patternScore },
+///  AnalysisResponse: { analysisId, status: PENDING|PROCESSING|COMPLETED|PARTIAL_SUCCESS|FAILED,
+///   riskScore(0~100), riskLevel: LOW|MEDIUM|HIGH, category, explanation, failureCode?,
+///   scoreBreakdown{ llmScore, urlScore, patternScore },
 ///   indicators[{type,description}], urls[{originalUrl,resolvedUrl,suspicious}],
 ///   recommendedActions[{type,label,phoneNumber?,url?}], analyzedAt }
+///   ※ 종료 전(PENDING/PROCESSING)·실패(FAILED)에는 riskScore·riskLevel·category·
+///     analyzedAt·scoreBreakdown 값이 **null**. 완료(COMPLETED)/부분성공(PARTIAL_SUCCESS)
+///     에서만 점수·등급을 신뢰. FAILED는 '안전'이 아니라 별도 실패 안내가 필요.
 ///   ※ scoreBreakdown은 3중 스코어 게이지(§4)와 대응. 현재 규칙 기반이라 llmScore=0.
 ///
 ///  통계 /api/v1/statistics/overview?period=LAST_7_DAYS|LAST_30_DAYS|LAST_90_DAYS|ALL
@@ -83,12 +90,14 @@ class AnalysisApi {
     return null;
   }
 
-  /// 문자 분석 요청. 성공/실패 사유를 함께 담은 [AnalysisOutcome]로 돌려준다.
-  /// [source]는 자동 탐지(AUTO)/수동 입력(MANUAL) 구분.
+  /// 문자 분석 **접수**. 서버가 비동기로 처리하므로 이 호출은 완성 결과가 아니라
+  /// 접수 식별자(analysisId)와 현재 상태를 담은 [AnalysisRequestOutcome]로 돌려준다.
+  /// 접수 뒤에는 [getAnalysis]를 종료 상태(COMPLETED/PARTIAL_SUCCESS/FAILED)까지
+  /// 폴링해야 한다. [source]는 자동 탐지(AUTO)/수동 입력(MANUAL) 구분.
   ///
   /// 백엔드는 이 엔드포인트에 유저 기준 10회/분 레이트리밋을 걸어(초과 시 429,
   /// `ANALYSIS_RATE_LIMIT_EXCEEDED`) 일반 실패와 다른 안내가 필요하다.
-  static Future<AnalysisOutcome> analyze({
+  static Future<AnalysisRequestOutcome> analyze({
     required String content,
     required DateTime receivedAt,
     required AnalysisSource source,
@@ -112,18 +121,25 @@ class AnalysisApi {
           .timeout(_timeout));
       // 429: 분석 요청 한도 초과. 서버 안내 문구를 그대로 노출(단일 출처).
       if (res.statusCode == 429) {
-        return AnalysisOutcome.failure(
+        return AnalysisRequestOutcome.failure(
           _errorMessage(res) ?? '분석 요청이 잠시 제한됐어요. 잠시 후 다시 시도해 주세요.',
           rateLimited: true,
         );
       }
+      // 정상 접수는 202지만, 성공 판정은 상태코드 대신 ApiResponse.status로 한다.
       final data = _data(res);
-      if (data == null) {
-        return const AnalysisOutcome.failure('분석에 실패했어요. 잠시 후 다시 시도해 주세요.');
+      final id = (data?['analysisId'] as num?)?.toInt();
+      if (data == null || id == null) {
+        return const AnalysisRequestOutcome.failure(
+            '분석에 실패했어요. 잠시 후 다시 시도해 주세요.');
       }
-      return AnalysisOutcome.success(AnalysisResult.fromJson(data));
+      return AnalysisRequestOutcome.accepted(AnalysisAccepted(
+        analysisId: id,
+        status: AnalysisStatus.fromWire(data['status'] as String?),
+      ));
     } catch (_) {
-      return const AnalysisOutcome.failure('분석에 실패했어요. 잠시 후 다시 시도해 주세요.');
+      return const AnalysisRequestOutcome.failure(
+          '분석에 실패했어요. 잠시 후 다시 시도해 주세요.');
     }
   }
 
@@ -245,25 +261,62 @@ class AnalysisApi {
       '${d.day.toString().padLeft(2, '0')}';
 }
 
-/// 분석 요청 결과. 성공이면 [result]가 채워지고, 실패면 사용자에게 보여줄
-/// [error] 문구가 담긴다. [rateLimited]는 429(요청 한도 초과)를 일반 실패와
-/// 구분해, 화면이 필요하면 다르게 안내할 수 있게 한다.
-class AnalysisOutcome {
-  final AnalysisResult? result;
+/// 분석 **접수** 결과. 접수됐으면 [accepted](analysisId+status)가 채워지고,
+/// 실패면 사용자에게 보여줄 [error] 문구가 담긴다. [rateLimited]는 429(요청 한도
+/// 초과)를 일반 실패와 구분해, 화면이 필요하면 다르게 안내할 수 있게 한다.
+class AnalysisRequestOutcome {
+  final AnalysisAccepted? accepted;
   final String? error;
   final bool rateLimited;
 
-  const AnalysisOutcome.success(AnalysisResult this.result)
+  const AnalysisRequestOutcome.accepted(AnalysisAccepted this.accepted)
       : error = null,
         rateLimited = false;
-  const AnalysisOutcome.failure(this.error, {this.rateLimited = false})
-      : result = null;
+  const AnalysisRequestOutcome.failure(this.error, {this.rateLimited = false})
+      : accepted = null;
 
-  /// 성공 여부.
-  bool get ok => result != null;
+  /// 접수 성공 여부.
+  bool get ok => accepted != null;
+}
+
+/// POST 접수 응답(AnalysisAcceptedResponse). 결과가 아니라 접수 식별자와 현재 상태.
+class AnalysisAccepted {
+  final int analysisId;
+  final AnalysisStatus status;
+  const AnalysisAccepted({required this.analysisId, required this.status});
 }
 
 // ─────────────────────────── enums (백엔드 계약 매핑) ───────────────────────────
+
+/// 분석 처리 상태(백엔드 AnalysisStatus). 종료 상태는 completed·partialSuccess·failed.
+enum AnalysisStatus {
+  pending('PENDING'),
+  processing('PROCESSING'),
+  completed('COMPLETED'),
+  partialSuccess('PARTIAL_SUCCESS'),
+  failed('FAILED');
+
+  final String wire;
+  const AnalysisStatus(this.wire);
+
+  /// 알 수 없는/누락 값은 아직 처리 전으로 보고 pending 취급(폴링 유도).
+  static AnalysisStatus fromWire(String? v) {
+    for (final s in values) {
+      if (s.wire == v) return s;
+    }
+    return AnalysisStatus.pending;
+  }
+
+  /// 더 이상 상태가 바뀌지 않는 종료 상태(폴링 중단 기준).
+  bool get isTerminal =>
+      this == completed || this == partialSuccess || this == failed;
+
+  /// 점수·등급 등 결과 필드를 신뢰할 수 있는 상태(완료/부분성공).
+  bool get hasResult => this == completed || this == partialSuccess;
+
+  /// 아직 처리 중(폴링 계속).
+  bool get isPending => this == pending || this == processing;
+}
 
 /// 분석 출처. AUTO=자동 탐지, MANUAL=수동 입력.
 enum AnalysisSource {
@@ -356,7 +409,7 @@ enum IndicatorType {
 
 /// 백엔드 RiskLevel(HIGH/MEDIUM/LOW) → 프론트 [RiskLevel](high/med/low) 매핑.
 /// 알 수 없는/손상된 값은 과소평가보다 과대평가가 안전하므로 high로 수렴시킨다
-/// (fail-secure — 피싱 경고를 놓치지 않게).
+/// (fail-secure — 피싱 경고를 놓치지 않게). 값이 항상 존재하는 문맥(통계 버킷 등)용.
 RiskLevel riskLevelFromWire(String? v) {
   switch (v) {
     case 'HIGH':
@@ -368,6 +421,14 @@ RiskLevel riskLevelFromWire(String? v) {
     default:
       return RiskLevel.high;
   }
+}
+
+/// 비동기 결과용 nullable 매핑. 값이 **없으면**(아직 처리 전/실패) null을 준다 —
+/// 이때 high로 강제하면 PENDING/FAILED가 '위험'으로 오표시되므로 null을 유지한다.
+/// 단, 값이 있는데 알 수 없는 문자열이면 fail-secure로 high(손상 대비).
+RiskLevel? riskLevelOrNull(String? v) {
+  if (v == null) return null;
+  return riskLevelFromWire(v);
 }
 
 /// 프론트 RiskLevel → 백엔드 쿼리 문자열.
@@ -465,12 +526,18 @@ class RecommendedAction {
 }
 
 /// 문자 분석 상세 결과(AnalysisResponse).
+///
+/// 비동기라 상태에 따라 결과 필드가 비어 있을 수 있다. [status]가 완료/부분성공
+/// ([AnalysisStatus.hasResult])일 때만 [riskScore]·[riskLevel]이 채워지고, 처리
+/// 전(PENDING/PROCESSING)이나 실패(FAILED)에는 null이다. [failureCode]는 실패 원인.
 class AnalysisResult {
   final int analysisId;
-  final int riskScore; // 0~100
-  final RiskLevel riskLevel;
+  final AnalysisStatus status;
+  final int? riskScore; // 0~100 (완료/부분성공에서만)
+  final RiskLevel? riskLevel; // 완료/부분성공에서만
   final PhishingCategory? category;
   final String explanation;
+  final String? failureCode;
   final ScoreBreakdown scoreBreakdown;
   final List<Indicator> indicators;
   final List<UrlThreat> urls;
@@ -479,10 +546,12 @@ class AnalysisResult {
 
   const AnalysisResult({
     required this.analysisId,
-    required this.riskScore,
-    required this.riskLevel,
+    required this.status,
+    this.riskScore,
+    this.riskLevel,
     this.category,
     required this.explanation,
+    this.failureCode,
     required this.scoreBreakdown,
     required this.indicators,
     required this.urls,
@@ -490,15 +559,20 @@ class AnalysisResult {
     this.analyzedAt,
   });
 
+  /// 점수·등급을 신뢰할 수 있는 상태인지(완료/부분성공).
+  bool get hasResult => status.hasResult;
+
   factory AnalysisResult.fromJson(Map<String, dynamic> j) {
     final breakdown = j['scoreBreakdown'];
     final analyzed = j['analyzedAt'];
     return AnalysisResult(
       analysisId: (j['analysisId'] as num?)?.toInt() ?? 0,
-      riskScore: (j['riskScore'] as num?)?.toInt() ?? 0,
-      riskLevel: riskLevelFromWire(j['riskLevel'] as String?),
+      status: AnalysisStatus.fromWire(j['status'] as String?),
+      riskScore: (j['riskScore'] as num?)?.toInt(),
+      riskLevel: riskLevelOrNull(j['riskLevel'] as String?),
       category: PhishingCategory.fromWire(j['category'] as String?),
       explanation: (j['explanation'] as String?) ?? '',
+      failureCode: j['failureCode'] as String?,
       scoreBreakdown: breakdown is Map<String, dynamic>
           ? ScoreBreakdown.fromJson(breakdown)
           : const ScoreBreakdown(llmScore: 0, urlScore: 0, patternScore: 0),
@@ -516,7 +590,11 @@ class AnalysisResult {
   /// 외부(문자·시스템 공유)로 새지 않도록 공유 직전 한 번 더 마스킹한다(프론트 1차 마스킹 책임).
   String get shareSummary {
     final b = StringBuffer('[세이프팸] 문자 분석 결과\n');
-    b.writeln('위험도: ${riskLevel.label} ($riskScore점)');
+    final level = riskLevel;
+    if (level != null) {
+      final score = riskScore == null ? '' : ' ($riskScore점)';
+      b.writeln('위험도: ${level.label}$score');
+    }
     if (category != null) b.writeln('유형: ${category!.label}');
     final ex = _redactPii(explanation.trim());
     if (ex.isNotEmpty) b.writeln('\n$ex');
@@ -542,21 +620,24 @@ String _redactPii(String s) {
 }
 
 /// 탐지 이력 목록 항목(AnalysisListItem). sender/preview는 서버가 마스킹해 내려줌.
+/// 비동기라 [status]가 완료/부분성공일 때만 [riskScore]·[riskLevel]이 채워진다.
 class AnalysisListItem {
   final int analysisId;
+  final AnalysisStatus status;
   final String maskedSender;
   final String messagePreview;
-  final int riskScore;
-  final RiskLevel riskLevel;
+  final int? riskScore;
+  final RiskLevel? riskLevel;
   final PhishingCategory? category;
   final DateTime? analyzedAt;
 
   const AnalysisListItem({
     required this.analysisId,
+    required this.status,
     required this.maskedSender,
     required this.messagePreview,
-    required this.riskScore,
-    required this.riskLevel,
+    this.riskScore,
+    this.riskLevel,
     this.category,
     this.analyzedAt,
   });
@@ -565,10 +646,11 @@ class AnalysisListItem {
     final analyzed = j['analyzedAt'];
     return AnalysisListItem(
       analysisId: (j['analysisId'] as num?)?.toInt() ?? 0,
+      status: AnalysisStatus.fromWire(j['status'] as String?),
       maskedSender: (j['maskedSender'] as String?) ?? '',
       messagePreview: (j['messagePreview'] as String?) ?? '',
-      riskScore: (j['riskScore'] as num?)?.toInt() ?? 0,
-      riskLevel: riskLevelFromWire(j['riskLevel'] as String?),
+      riskScore: (j['riskScore'] as num?)?.toInt(),
+      riskLevel: riskLevelOrNull(j['riskLevel'] as String?),
       category: PhishingCategory.fromWire(j['category'] as String?),
       analyzedAt: analyzed is String ? DateTime.tryParse(analyzed) : null,
     );
