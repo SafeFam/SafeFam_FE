@@ -67,7 +67,8 @@ lib/
   util/masking.dart    전송 전 개인정보 1차 마스킹(계좌·카드·주민·전화 → [REDACTED])
   sheets.dart          챗봇·신고(analyses/report)·공유
 assets/character.png
-test/util/masking_test.dart  마스킹 회귀 테스트
+test/util/masking_test.dart         마스킹 회귀 테스트
+test/services/analysis_status_test.dart  분석 상태 파싱 회귀 테스트(처리 전·실패 null 처리)
 ```
 
 ## 다음 (기능 연결)
@@ -93,8 +94,14 @@ test/util/masking_test.dart  마스킹 회귀 테스트
 - ✅ 문자 분석 비동기(폴링) 전환 완료 — `POST` 202 접수 → `AnalysisDetailScreen`이 종료 상태까지 폴링(2초·최대 30s·dispose 취소), 결과 화면 status 분기(완료/부분 성공 배너/실패 화면), 이력 목록 status 칩. **처리 전·실패를 '위험/안전'으로 오표시하던 문제 해소**(riskScore·riskLevel nullable화) (이슈 #72)
 - ✅ 분석 결과 공유 — `share_plus`로 결과 요약 공유(원문·개인정보 제외), 결과 화면 공유 시트
 - 회원가입/재설정/잠금해제 인증문자는 실제 SMS(Solapi) 발송이라 서버 SMS 설정 + 실제 수신 가능한 번호 필요
-- 자동 탐지(문자 수신 리스너)·긴급 오버레이 실제 구현(온디바이스 검증 필요) · 가족 QR 실기기 카메라 검증 · FCM 알림 수신 로직(타 멤버 담당) · 상태관리(Provider/Riverpod)
-- URL 검사 전용 백엔드는 아직 없음 → 해당 화면은 UI만(연동 대기)
+
+### 남은 작업
+- **백엔드 준비됨 · 미연동(바로 착수 가능)**
+  - 월간 트렌드 카드 — `GET /api/v1/statistics/trends?month=YYYY-MM` → `{month, sampleSize, topPhishingTypes[{rank,category,count}], topRiskKeywords[{rank,keyword,count}]}`. 홈의 트렌드 카드(현재 목업 `sampleTrends`)를 실데이터로 교체.
+  - 가족 원격 모니터링 — `GET /api/v1/family/ward/{wardId}/logs`(보호자 전용, `PageResponse<AnalysisListItem>`). 가족 화면에서 피보호자 선택 → 탐지 이력 조회.
+- **온디바이스/실기기 필요** — 자동 탐지(문자 수신 리스너)·긴급 오버레이 실제 구현 · 가족 QR 실기기 카메라 검증
+- **프론트 단독(무백엔드)** — 고령층 접근성 실동작(큰 글씨·TTS 토글은 현재 목업) · 상태관리(Provider/Riverpod) · 테스트 확대
+- **타 멤버/백엔드 미존재** — FCM 알림 수신 로직(타 멤버 담당) · URL 검사 전용 백엔드·AI 대응 챗봇(FastAPI)은 아직 없어 해당 화면은 UI 목업 유지
 
 ## Firebase 설정 (FCM)
 FCM 관련 파일은 보안상 `.gitignore`로 관리합니다. 로컬에서 직접 생성이 필요합니다.
