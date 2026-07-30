@@ -4,6 +4,7 @@ import '../widgets/common.dart';
 import '../services/app_prefs.dart';
 import '../services/family_api.dart';
 import 'family_flow.dart';
+import 'ward_logs_screen.dart';
 
 class FamilyScreen extends StatefulWidget {
   const FamilyScreen({super.key});
@@ -59,6 +60,16 @@ class _FamilyScreenState extends State<FamilyScreen> {
     if (changed == true && mounted) _reload();
   }
 
+  /// 피보호자 탐지 이력(원격 모니터링) 화면으로. wardId가 없으면(방어) 무시.
+  void _openLogs(_MemberVM vm) {
+    final wardId = vm.member.wardId;
+    if (wardId == null) return;
+    Navigator.push(
+        context,
+        MaterialPageRoute(
+            builder: (_) => WardLogsScreen(wardId: wardId, title: vm.title)));
+  }
+
   Future<void> _revoke(_MemberVM vm) async {
     final ok = await showDialog<bool>(
       context: context,
@@ -87,40 +98,53 @@ class _FamilyScreenState extends State<FamilyScreen> {
     }
   }
 
-  Widget _memberRow(_MemberVM vm) => Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: SfCard(
-          child: Row(
-            children: [
-              const IconDisc(Icons.person_outline),
-              const SizedBox(width: 12),
-              Expanded(
+  Widget _memberRow(_MemberVM vm) {
+    final canViewLogs = vm.member.wardId != null;
+    // 별명이 있으면 보조줄에 번호를, 없으면 '보호 중'을 쓴다.
+    final sub = vm.nickname == null ? '보호 중' : (vm.member.wardPhone ?? '보호 중');
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: SfCard(
+        child: Row(
+          children: [
+            const IconDisc(Icons.person_outline),
+            const SizedBox(width: 12),
+            Expanded(
+              // 이름/번호 영역을 누르면 피보호자 탐지 이력으로 이동(원격 모니터링).
+              child: InkWell(
+                onTap: canViewLogs ? () => _openLogs(vm) : null,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(vm.title,
-                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+                        style: const TextStyle(
+                            fontSize: 17, fontWeight: FontWeight.w600)),
                     const SizedBox(height: 2),
-                    Text(vm.nickname == null ? '보호 중' : (vm.member.wardPhone ?? '보호 중'),
+                    Text(
+                        canViewLogs ? '$sub · 탐지 이력 보기' : sub,
                         style: AppText.caption),
                   ],
                 ),
               ),
-              PopupMenuButton<String>(
-                icon: const Icon(Icons.more_vert, color: AppColors.t3),
-                onSelected: (v) {
-                  if (v == 'rename') _rename(vm);
-                  if (v == 'revoke') _revoke(vm);
-                },
-                itemBuilder: (_) => const [
-                  PopupMenuItem(value: 'rename', child: Text('이름 설정')),
-                  PopupMenuItem(value: 'revoke', child: Text('연결 해제')),
-                ],
-              ),
-            ],
-          ),
+            ),
+            if (canViewLogs)
+              const Icon(Icons.chevron_right, color: AppColors.t3, size: 22),
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert, color: AppColors.t3),
+              onSelected: (v) {
+                if (v == 'rename') _rename(vm);
+                if (v == 'revoke') _revoke(vm);
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'rename', child: Text('이름 설정')),
+                PopupMenuItem(value: 'revoke', child: Text('연결 해제')),
+              ],
+            ),
+          ],
         ),
-      );
+      ),
+    );
+  }
 
   Widget _empty() => Column(
         mainAxisAlignment: MainAxisAlignment.center,

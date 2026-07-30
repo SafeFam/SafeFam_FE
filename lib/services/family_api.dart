@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import 'analysis_api.dart' show AnalysisPage;
 import 'auth_api.dart' show AuthApi;
 
 /// 가족 보호 모드 서버 통신 담당.
@@ -115,6 +116,31 @@ class FamilyApi {
           .whereType<Map<String, dynamic>>()
           .map(FamilyMember.fromJson)
           .toList();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 피보호자(ward)의 탐지 이력 조회(보호자 전용, 원격 모니터링). 최신순 페이지.
+  /// 응답은 문자 분석 목록과 동일한 [AnalysisPage](status 포함). 실패 시 null.
+  ///
+  /// ※ 상세(`/analyses/{id}`)는 소유자(피보호자) 스코프라 보호자는 열 수 없어,
+  ///   호출부는 목록만 읽기 전용으로 보여준다.
+  static Future<AnalysisPage?> getWardLogs(
+    int wardId, {
+    int page = 0,
+    int size = 20,
+  }) async {
+    try {
+      final res = await AuthApi.sendAuthorized((headers) => http
+          .get(
+              _uri('/api/v1/family/ward/$wardId/logs?page=$page&size=$size'),
+              headers: headers)
+          .timeout(_timeout));
+      if (!_isSuccess(res) || res.body.isEmpty) return null;
+      final data = jsonDecode(res.body)['data'];
+      if (data is! Map<String, dynamic>) return null;
+      return AnalysisPage.fromJson(data);
     } catch (_) {
       return null;
     }
