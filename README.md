@@ -8,7 +8,7 @@
 > 카카오 로그인은 빌드 시 앱 키 주입 필요: `flutter run --dart-define=KAKAO_NATIVE_APP_KEY=<네이티브 앱 키>` (AndroidManifest의 리다이렉트 스킴 값과 동일해야 함).
 
 메인 하단 탭 **홈 · 이력 · 가족 · 검사** (설정=더보기는 홈 우상단 톱니바퀴로 진입).
-검사 탭 → 입력한 문자를 **계좌·카드·주민·전화번호 등 개인정보를 `[REDACTED]`로 1차 마스킹**한 뒤 분석 API(`POST /api/v1/analyses`, source=MANUAL)로 검사 → 결과(**3중 스코어 게이지 + breakdown**). 요청 한도(분당) 초과 시 429 안내를 구분해 노출. 결과 → 대응 챗봇 시트 → 신고 시트 / 전화 / 공유.
+검사 탭 → 입력한 문자를 **계좌·카드·주민·전화번호 등 개인정보를 `[REDACTED]`로 1차 마스킹**한 뒤 분석 API(`POST /api/v1/analyses`, source=MANUAL)로 접수 → 결과(**3중 스코어 게이지 + breakdown**). 분석은 **비동기**라 접수(202) 후 상세를 **종료 상태까지 폴링**하며 "분석 중"을 보여주고, 완료/부분 성공/실패에 따라 화면을 다르게 렌더한다(실패는 '안전'이 아니라 별도 안내). 요청 한도(분당) 초과 시 429 안내를 구분해 노출. 결과 → 대응 챗봇 시트 → 신고 시트 / 전화 / 공유.
 보이스피싱·URL 결과·긴급 오버레이는 더보기 > 화면 미리보기(개발용)에서 확인.
 
 ## 실행 (Android Studio)
@@ -22,7 +22,7 @@
 - **baseUrl**: 기본값 `http://10.0.2.2:8080` (Android 에뮬레이터에서 호스트 PC의 localhost). 실기기/배포는 빌드 시 주입:
   `flutter run --dart-define=SAFEFAM_API_BASE_URL=https://<도메인>`
 - 인증 계약: 공통 응답 `ApiResponse{status,message,data}`, 토큰은 바디(`TokenResponse`). 인증이 필요한(보호된) API 요청에만 `Authorization: Bearer <accessToken>`을 붙임 — 가입·로그인처럼 토큰 없는 요청엔 미적용.
-- 문자 분석: `POST /api/v1/analyses`(생성)·`GET`(이력, page·필터)·`GET|DELETE /{id}`·`POST /{id}/feedback`. 응답은 `AnalysisResponse{riskScore, riskLevel(HIGH/MEDIUM/LOW), category, scoreBreakdown{llmScore,urlScore,patternScore}, indicators, urls, recommendedActions}`. 통계는 `GET /api/v1/statistics/overview?period=`. (전부 보호된 API)
+- 문자 분석(**비동기**): `POST /api/v1/analyses`(접수 → **202 `{analysisId, status}`**, 완성 결과 아님)·`GET`(이력, page·필터)·`GET /{id}`(상세, **종료 상태까지 폴링**)·`DELETE /{id}`·`POST /{id}/feedback`. `status`=`PENDING·PROCESSING·COMPLETED·PARTIAL_SUCCESS·FAILED`. 응답 `AnalysisResponse{status, riskScore?, riskLevel?(HIGH/MEDIUM/LOW), category?, failureCode?, scoreBreakdown{llmScore,urlScore,patternScore}, indicators, urls, recommendedActions, analyzedAt?}` — **처리 전·실패엔 점수·등급이 null**(완료/부분 성공에서만 신뢰). 통계는 `GET /api/v1/statistics/overview?period=`. (전부 보호된 API)
   - **전송 전 마스킹**(`util/masking.dart`): 개인정보보호법상 원문을 그대로 보내지 않도록 `content`의 계좌·카드·주민·전화번호를 `[REDACTED]`로 가림(URL은 링크 분석 위해 보존). 발신번호는 화이트리스트 필터가 쓰므로 마스킹 안 함.
   - **레이트리밋**: `POST /analyses`는 유저 기준 분당 제한이 있어 초과 시 429가 오며, 프론트는 일반 실패와 구분해 서버 안내 문구를 노출.
   - **신고**: `POST /api/v1/analyses/{id}/report {type:PHISHING|SPAM|OTHER}` — 저장된 분석을 익명 접수(원문·발신번호·userId 제외, 최초 201·재신고 200 멱등). 결과 화면 → 대응 도우미 → 신고.
@@ -90,6 +90,7 @@ test/util/masking_test.dart  마스킹 회귀 테스트
 - ✅ 탐지 이력 익명 신고 연동 완료 — `POST /analyses/{id}/report`(PHISHING/SPAM/OTHER), 결과 화면 → 대응 도우미 → 신고 (PR #67)
 - ✅ 가족 QR 연결 완료 — 보호자 QR 표시(`qr_flutter`) + 피보호자 스캔(`mobile_scanner`) → `/family/link/qr` (PR #69, ⚠️ 실기기 카메라 검증 후속)
 - ✅ 신뢰 발신자(화이트리스트) 관리 완료 — 목록·등록·삭제 UI + 더보기 진입점 (`whitelist_api.dart`, PR #71)
+- ✅ 문자 분석 비동기(폴링) 전환 완료 — `POST` 202 접수 → `AnalysisDetailScreen`이 종료 상태까지 폴링(2초·최대 30s·dispose 취소), 결과 화면 status 분기(완료/부분 성공 배너/실패 화면), 이력 목록 status 칩. **처리 전·실패를 '위험/안전'으로 오표시하던 문제 해소**(riskScore·riskLevel nullable화) (이슈 #72)
 - ✅ 분석 결과 공유 — `share_plus`로 결과 요약 공유(원문·개인정보 제외), 결과 화면 공유 시트
 - 회원가입/재설정/잠금해제 인증문자는 실제 SMS(Solapi) 발송이라 서버 SMS 설정 + 실제 수신 가능한 번호 필요
 - 자동 탐지(문자 수신 리스너)·긴급 오버레이 실제 구현(온디바이스 검증 필요) · 가족 QR 실기기 카메라 검증 · FCM 알림 수신 로직(타 멤버 담당) · 상태관리(Provider/Riverpod)
