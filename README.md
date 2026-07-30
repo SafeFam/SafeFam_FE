@@ -49,7 +49,8 @@ lib/
     family_flow.dart   가족 등록 · 초대코드 · QR 표시 · 연결 · 이름 설정
     qr_scan_screen.dart 가족 QR 스캔(mobile_scanner) → qrToken 반환
     whitelist_screen.dart 신뢰 발신자 관리(목록·추가·삭제)
-    home_screen.dart   홈(톱니→설정)
+    home_screen.dart   홈(월간 트렌드 카드·톱니→설정)
+    ward_logs_screen.dart 가족 원격 모니터링(피보호자 탐지 이력, 읽기 전용)
     check_screen.dart  검사 탭(수동 분석 → 마스킹 → analyses API 호출)
     results.dart       결과(3중 스코어 게이지)·보이스피싱·URL + AnalysisDetailScreen(이력 상세·삭제·피드백)
     overlay_alert.dart 강제 오버레이 경고
@@ -61,7 +62,9 @@ lib/
     family_api.dart    가족 보호 API — 초대·코드/QR 연결·목록·해제(family)
     whitelist_api.dart 신뢰 발신자 API — 목록·등록·삭제(whitelists)
     device_api.dart    FCM 기기 등록/해제(devices)
-    app_prefs.dart     기기 로컬 저장(온보딩·가족 별명·deviceId, flutter_secure_storage)
+    app_prefs.dart     기기 로컬 저장(온보딩·가족 별명·deviceId·접근성, flutter_secure_storage)
+    app_settings.dart  접근성 전역 설정(큰 글씨·음성, ValueNotifier)
+    tts_service.dart   음성 안내(flutter_tts, 한국어·재생/멈춤)
     notification_service.dart FCM 수신·알림 라우팅(포그라운드/백그라운드/콜드스타트)
   util/launchers.dart  전화(tel)·링크 딥링크 헬퍼(url_launcher)
   util/masking.dart    전송 전 개인정보 1차 마스킹(계좌·카드·주민·전화 → [REDACTED])
@@ -92,15 +95,16 @@ test/services/analysis_status_test.dart  분석 상태 파싱 회귀 테스트(�
 - ✅ 가족 QR 연결 완료 — 보호자 QR 표시(`qr_flutter`) + 피보호자 스캔(`mobile_scanner`) → `/family/link/qr` (PR #69, ⚠️ 실기기 카메라 검증 후속)
 - ✅ 신뢰 발신자(화이트리스트) 관리 완료 — 목록·등록·삭제 UI + 더보기 진입점 (`whitelist_api.dart`, PR #71)
 - ✅ 문자 분석 비동기(폴링) 전환 완료 — `POST` 202 접수 → `AnalysisDetailScreen`이 종료 상태까지 폴링(2초·최대 30s·dispose 취소), 결과 화면 status 분기(완료/부분 성공 배너/실패 화면), 이력 목록 status 칩. **처리 전·실패를 '위험/안전'으로 오표시하던 문제 해소**(riskScore·riskLevel nullable화) (이슈 #72)
+- ✅ 월간 피싱 트렌드 카드 연동 완료 — 홈 '요즘 많은 사기 수법'을 `GET /statistics/trends` 실데이터로(유형 순위+위험 키워드), 목업 제거 (이슈 #74)
+- ✅ 가족 원격 모니터링 완료 — 보호자가 피보호자 탐지 이력 조회(`GET /family/ward/{id}/logs`), 가족 멤버 탭 → 읽기 전용 이력(`ward_logs_screen`) (이슈 #75)
+- ✅ 고령층 접근성 실동작 완료 — '글씨 더 크게'(앱 전체 `MediaQuery.textScaler`)·'음성으로 읽어주기'/'다시 들려주기'(TTS, `flutter_tts`) 실제 동작, `AppSettings`로 기기 저장 (이슈 #78)
 - ✅ 분석 결과 공유 — `share_plus`로 결과 요약 공유(원문·개인정보 제외), 결과 화면 공유 시트
 - 회원가입/재설정/잠금해제 인증문자는 실제 SMS(Solapi) 발송이라 서버 SMS 설정 + 실제 수신 가능한 번호 필요
 
 ### 남은 작업
-- **백엔드 준비됨 · 미연동(바로 착수 가능)**
-  - 월간 트렌드 카드 — `GET /api/v1/statistics/trends?month=YYYY-MM` → `{month, sampleSize, topPhishingTypes[{rank,category,count}], topRiskKeywords[{rank,keyword,count}]}`. 홈의 트렌드 카드(현재 목업 `sampleTrends`)를 실데이터로 교체.
-  - 가족 원격 모니터링 — `GET /api/v1/family/ward/{wardId}/logs`(보호자 전용, `PageResponse<AnalysisListItem>`). 가족 화면에서 피보호자 선택 → 탐지 이력 조회.
-- **온디바이스/실기기 필요** — 자동 탐지(문자 수신 리스너)·긴급 오버레이 실제 구현 · 가족 QR 실기기 카메라 검증
-- **프론트 단독(무백엔드)** — 고령층 접근성 실동작(큰 글씨·TTS 토글은 현재 목업) · 상태관리(Provider/Riverpod) · 테스트 확대
+- **백엔드 준비됨 · 미연동** — 없음. 백엔드 구현분 중 프론트가 붙일 실사용 엔드포인트는 전부 소진(컨트롤러 8개 전수 대조 기준).
+- **온디바이스/실기기 필요** — 자동 탐지(문자 수신 리스너)·긴급 오버레이 실제 구현 · 가족 QR 실기기 카메라 검증 · TTS 실제 음성 출력 검증
+- **프론트 코드 품질(무백엔드)** — 상태 칩·이력 타일 공용 위젯 추출(history↔ward_logs 중복) · 상태관리(Provider/Riverpod) · 테스트 확대
 - **타 멤버/백엔드 미존재** — FCM 알림 수신 로직(타 멤버 담당) · URL 검사 전용 백엔드·AI 대응 챗봇(FastAPI)은 아직 없어 해당 화면은 UI 목업 유지
 
 ## Firebase 설정 (FCM)
