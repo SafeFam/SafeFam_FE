@@ -1,6 +1,6 @@
 # 세이프팸 (SafeFam) — Flutter UI 스캐폴드
 
-온 가족 금융사기 지킴이 앱. 피그마 최종 시안을 Flutter로 옮긴 앱 (Pixel 7 / Flutter 3.44 기준). **인증·마이페이지·문자 분석(수동 검사)·가족 보호(초대코드+QR 연결)·신고·신뢰 발신자(화이트리스트)까지 백엔드와 http 연동 완료**. 분석 요청은 **전송 전 개인정보 1차 마스킹**을 거치며, FCM은 **기기 등록/해제까지 연동**(알림 수신 처리는 타 멤버 담당). 자동 탐지 권한·오버레이는 미연결이며, 가족 QR은 코드 연동 완료·실기기 카메라 검증만 남음.
+온 가족 금융사기 지킴이 앱. 피그마 최종 시안을 Flutter로 옮긴 앱 (Pixel 7 / Flutter 3.44 기준). **인증·마이페이지·문자 분석(수동 검사)·가족 보호(초대코드+QR 연결)·신고·신뢰 발신자(화이트리스트)까지 백엔드와 http 연동 완료**. 개인정보 마스킹은 **서버에서 처리**(프론트 클라이언트 마스킹 제거, #80)하며, FCM은 **기기 등록/해제까지 연동**(알림 수신 처리는 타 멤버 담당). 자동 탐지 권한·오버레이는 미연결이며, 가족 QR은 코드 연동 완료·실기기 카메라 검증만 남음.
 
 ## 흐름
 (스플래시 → 온보딩) → **로그인**(휴대폰 번호 + 비밀번호 · 카카오 · 구글) → 신규는 **회원가입**(휴대폰 인증 요청→확인 → 닉네임 + 비밀번호) → **가족 등록**(보호자/피보호자) → 보호자는 초대 코드 발급 → 연결 후 이름 설정 / 피보호자는 코드 입력 → 메인.
@@ -8,7 +8,7 @@
 > 카카오 로그인은 빌드 시 앱 키 주입 필요: `flutter run --dart-define=KAKAO_NATIVE_APP_KEY=<네이티브 앱 키>` (AndroidManifest의 리다이렉트 스킴 값과 동일해야 함).
 
 메인 하단 탭 **홈 · 이력 · 가족 · 검사** (설정=더보기는 홈 우상단 톱니바퀴로 진입).
-검사 탭 → 입력한 문자를 **계좌·카드·주민·전화번호 등 개인정보를 `[REDACTED]`로 1차 마스킹**한 뒤 분석 API(`POST /api/v1/analyses`, source=MANUAL)로 접수 → 결과(**3중 스코어 게이지 + breakdown**). 분석은 **비동기**라 접수(202) 후 상세를 **종료 상태까지 폴링**하며 "분석 중"을 보여주고, 완료/부분 성공/실패에 따라 화면을 다르게 렌더한다(실패는 '안전'이 아니라 별도 안내). 요청 한도(분당) 초과 시 429 안내를 구분해 노출. 결과 → 대응 챗봇 시트 → 신고 시트 / 전화 / 공유.
+검사 탭 → 입력한 문자를 분석 API(`POST /api/v1/analyses`, source=MANUAL)로 접수(개인정보 마스킹은 서버가 처리) → 결과(**3중 스코어 게이지 + breakdown**). 분석은 **비동기**라 접수(202) 후 상세를 **종료 상태까지 폴링**하며 "분석 중"을 보여주고, 완료/부분 성공/실패에 따라 화면을 다르게 렌더한다(실패는 '안전'이 아니라 별도 안내). 요청 한도(분당) 초과 시 429 안내를 구분해 노출. 결과 → 대응 챗봇 시트 → 신고 시트 / 전화 / 공유.
 보이스피싱·URL 결과·긴급 오버레이는 더보기 > 화면 미리보기(개발용)에서 확인.
 
 ## 실행 (Android Studio)
@@ -23,7 +23,7 @@
   `flutter run --dart-define=SAFEFAM_API_BASE_URL=https://<도메인>`
 - 인증 계약: 공통 응답 `ApiResponse{status,message,data}`, 토큰은 바디(`TokenResponse`). 인증이 필요한(보호된) API 요청에만 `Authorization: Bearer <accessToken>`을 붙임 — 가입·로그인처럼 토큰 없는 요청엔 미적용.
 - 문자 분석(**비동기**): `POST /api/v1/analyses`(접수 → **202 `{analysisId, status}`**, 완성 결과 아님)·`GET`(이력, page·필터)·`GET /{id}`(상세, **종료 상태까지 폴링**)·`DELETE /{id}`·`POST /{id}/feedback`. `status`=`PENDING·PROCESSING·COMPLETED·PARTIAL_SUCCESS·FAILED`. 응답 `AnalysisResponse{status, riskScore?, riskLevel?(HIGH/MEDIUM/LOW), category?, failureCode?, scoreBreakdown{llmScore,urlScore,patternScore}, indicators, urls, recommendedActions, analyzedAt?}` — **처리 전·실패엔 점수·등급이 null**(완료/부분 성공에서만 신뢰). 통계는 `GET /api/v1/statistics/overview?period=`. (전부 보호된 API)
-  - **전송 전 마스킹**(`util/masking.dart`): 개인정보보호법상 원문을 그대로 보내지 않도록 `content`의 계좌·카드·주민·전화번호를 `[REDACTED]`로 가림(URL은 링크 분석 위해 보존). 발신번호는 화이트리스트 필터가 쓰므로 마스킹 안 함.
+  - **마스킹은 서버 담당**(#80): 프론트 클라이언트 마스킹(`util/masking.dart`)은 제거됨 — `content`를 그대로 보내고 서버가 개인정보를 마스킹한다. 단 결과 공유(카톡·문자) 직전에는 유출 방어용 마스킹(`analysis_api.dart` `_redactPii`)을 한 번 더 적용.
   - **레이트리밋**: `POST /analyses`는 유저 기준 분당 제한이 있어 초과 시 429가 오며, 프론트는 일반 실패와 구분해 서버 안내 문구를 노출.
   - **신고**: `POST /api/v1/analyses/{id}/report {type:PHISHING|SPAM|OTHER}` — 저장된 분석을 익명 접수(원문·발신번호·userId 제외, 최초 201·재신고 200 멱등). 결과 화면 → 대응 도우미 → 신고.
 - 가족 보호: `POST /api/v1/family/invite`(초대코드/QR 토큰 발급)·`POST /link/code`(코드로 연결)·`POST /link/qr`(QR로 연결)·`GET /members`·`DELETE /{linkId}`. 별명은 백엔드에 필드가 없어 기기 로컬(AppPrefs)에 저장. QR은 보호자 화면이 `qrToken`을 QR로 표시(`qr_flutter`)하고 피보호자가 스캔(`mobile_scanner`)해 연결 — 실기기 카메라 검증은 후속. (전부 보호된 API)
@@ -51,7 +51,7 @@ lib/
     whitelist_screen.dart 신뢰 발신자 관리(목록·추가·삭제)
     home_screen.dart   홈(월간 트렌드 카드·톱니→설정)
     ward_logs_screen.dart 가족 원격 모니터링(피보호자 탐지 이력, 읽기 전용)
-    check_screen.dart  검사 탭(수동 분석 → 마스킹 → analyses API 호출)
+    check_screen.dart  검사 탭(수동 분석 → analyses API 호출; 마스킹은 서버)
     results.dart       결과(3중 스코어 게이지)·보이스피싱·URL + AnalysisDetailScreen(이력 상세·삭제·피드백)
     overlay_alert.dart 강제 오버레이 경고
     history_screen.dart 이력(목록·통계·유형 필터·상세 이동)
@@ -67,10 +67,8 @@ lib/
     tts_service.dart   음성 안내(flutter_tts, 한국어·재생/멈춤)
     notification_service.dart FCM 수신·알림 라우팅(포그라운드/백그라운드/콜드스타트)
   util/launchers.dart  전화(tel)·링크 딥링크 헬퍼(url_launcher)
-  util/masking.dart    전송 전 개인정보 1차 마스킹(계좌·카드·주민·전화 → [REDACTED])
   sheets.dart          챗봇·신고(analyses/report)·공유
 assets/character.png
-test/util/masking_test.dart         마스킹 회귀 테스트
 test/services/analysis_status_test.dart  분석 상태 파싱 회귀 테스트(처리 전·실패 null 처리)
 ```
 
@@ -88,7 +86,7 @@ test/services/analysis_status_test.dart  분석 상태 파싱 회귀 테스트(�
 - ✅ 계정 잠금 해제 연동 완료 — 로그인 시 `ACCOUNT_LOCKED`(403) 감지 → 휴대폰 인증 후 `POST /auth/unlock` (PR #48)
 - ✅ 401 토큰 자동 재발급 완료 — 보호 API 공통 경로에서 401→재발급→1회 재시도(single-flight), 실패 시 세션 폐기·로그인 이동 (PR #57)
 - ✅ 가족 보호(초대코드) 연동 완료 — 초대 발급·코드 연결·목록·해제, 별명 로컬 저장 (`family_api.dart`, PR #59)
-- ✅ 전송 전 개인정보 1차 마스킹 완료 — `util/masking.dart`(계좌·카드·주민·전화 → `[REDACTED]`, URL 보존) (PR #61)
+- ↩️ 전송 전 클라이언트 마스킹 제거 — 서버가 마스킹을 담당하기로 방침 변경, `util/masking.dart` 삭제 (PR #61 도입 → PR #81/#80 제거). 공유 유출 방어용 `_redactPii`는 유지
 - ✅ 분석 요청 한도(429) 안내 구분 완료 — 서버 안내 문구를 일반 실패와 구분해 노출 (PR #63)
 - ✅ 로그아웃 시 FCM 기기 해제 완료 — 등록 `deviceId` 보관 → 로그아웃 시 `DELETE /devices/{id}` (PR #65)
 - ✅ 탐지 이력 익명 신고 연동 완료 — `POST /analyses/{id}/report`(PHISHING/SPAM/OTHER), 결과 화면 → 대응 도우미 → 신고 (PR #67)
