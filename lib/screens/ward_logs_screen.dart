@@ -30,7 +30,11 @@ class _WardLogsScreenState extends State<WardLogsScreen> {
   }
 
   void _reload() {
-    setState(() => _future = _load());
+    // 블록 본문: 화살표는 대입식의 값(Future)을 반환해
+    // "setState callback returned a Future" 오류를 낸다.
+    setState(() {
+      _future = _load();
+    });
   }
 
   Future<AnalysisPage> _load() async {

@@ -32,7 +32,11 @@ class _FamilyScreenState extends State<FamilyScreen> {
   }
 
   void _reload() {
-    setState(() => _future = _load());
+    // 블록 본문으로 둔다: 화살표(`=> _future = _load()`)는 대입식의 값인
+    // Future를 반환해 "setState callback returned a Future" 오류를 낸다.
+    setState(() {
+      _future = _load();
+    });
   }
 
   Future<List<_MemberVM>> _load() async {
