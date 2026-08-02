@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common.dart';
@@ -34,6 +36,12 @@ class _CheckScreenState extends State<CheckScreen> {
       content: text,
       receivedAt: DateTime.now(),
       source: AnalysisSource.manual,
+      // 백엔드가 clientMessageId를 필수(@NotBlank)로 요구한다. 수동 입력엔
+      // 자연스러운 문자 id가 없으므로 매 검사마다 고유값을 만들어 보낸다.
+      // 백엔드는 같은 clientMessageId를 멱등 처리(기존 건 반환)하므로, 타임스탬프
+      // 단독 충돌을 막기 위해 랜덤 suffix를 붙여 사실상 유일성을 보장한다.
+      clientMessageId:
+          'manual-${DateTime.now().microsecondsSinceEpoch}-${Random().nextInt(0x7fffffff)}',
     );
     if (!mounted) return;
     setState(() => _loading = false);
