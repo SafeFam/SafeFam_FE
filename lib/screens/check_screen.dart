@@ -34,6 +34,9 @@ class _CheckScreenState extends State<CheckScreen> {
       content: text,
       receivedAt: DateTime.now(),
       source: AnalysisSource.manual,
+      // 백엔드가 clientMessageId를 필수(@NotBlank)로 요구한다. 수동 입력엔
+      // 자연스러운 문자 id가 없으므로 매 검사마다 고유값을 만들어 보낸다.
+      clientMessageId: 'manual-${DateTime.now().microsecondsSinceEpoch}',
     );
     if (!mounted) return;
     setState(() => _loading = false);
