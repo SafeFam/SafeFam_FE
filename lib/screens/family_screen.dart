@@ -151,7 +151,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
   }
 
   Widget _empty() => Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
         children: [
           const CharacterDisc(84),
           const SizedBox(height: 14),
@@ -208,8 +208,15 @@ class _FamilyScreenState extends State<FamilyScreen> {
               }
               final members = snapshot.data ?? const [];
               if (members.isEmpty) {
+                // 남은 공간 정중앙이 아니라 상단 쪽(세로 -0.35)에 둔다.
+                // 정중앙이면 본문 제목과 콘텐츠 사이가 크게 벌어져 떠 보인다.
                 return Padding(
-                    padding: const EdgeInsets.all(18), child: _empty());
+                  padding: const EdgeInsets.all(18),
+                  child: Align(
+                    alignment: const Alignment(0, -0.35),
+                    child: _empty(),
+                  ),
+                );
               }
               return RefreshIndicator(
                 onRefresh: () async => _reload(),
