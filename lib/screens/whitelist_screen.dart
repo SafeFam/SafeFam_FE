@@ -112,7 +112,7 @@ class _WhitelistScreenState extends State<WhitelistScreen> {
       );
 
   Widget _empty() => Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
         children: [
           const CharacterDisc(84),
           const SizedBox(height: 14),
@@ -168,7 +168,15 @@ class _WhitelistScreenState extends State<WhitelistScreen> {
           }
           final items = snapshot.data ?? const [];
           if (items.isEmpty) {
-            return Padding(padding: const EdgeInsets.all(18), child: _empty());
+            // 정중앙이 아니라 상단 쪽(세로 -0.35)에 둔다. 전체화면 높이에
+            // 중앙정렬하면 콘텐츠가 아래로 가라앉아 상단 여백이 크게 뜬다.
+            return Padding(
+              padding: const EdgeInsets.all(18),
+              child: Align(
+                alignment: const Alignment(0, -0.35),
+                child: _empty(),
+              ),
+            );
           }
           return RefreshIndicator(
             onRefresh: () async => _reload(),

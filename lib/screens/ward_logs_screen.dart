@@ -130,7 +130,7 @@ class _WardLogsScreenState extends State<WardLogsScreen> {
   }
 
   Widget _empty() => Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
         children: [
           const CharacterDisc(84),
           const SizedBox(height: 14),
@@ -175,7 +175,14 @@ class _WardLogsScreenState extends State<WardLogsScreen> {
           }
           final items = snapshot.data?.content ?? const [];
           if (items.isEmpty) {
-            return Padding(padding: const EdgeInsets.all(18), child: _empty());
+            // 정중앙이 아니라 상단 쪽(세로 -0.35)에 둔다(가족·신뢰발신자와 통일).
+            return Padding(
+              padding: const EdgeInsets.all(18),
+              child: Align(
+                alignment: const Alignment(0, -0.35),
+                child: _empty(),
+              ),
+            );
           }
           return RefreshIndicator(
             onRefresh: () async => _reload(),
