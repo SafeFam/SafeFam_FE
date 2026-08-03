@@ -71,6 +71,8 @@ class _ChatSheetState extends State<_ChatSheet> {
   // 서버로 보낼 실제 대화(사용자/도우미 번갈아). 첫 인사말은 화면 안내용이라 제외.
   final List<ChatMessage> _messages = [];
   bool _sending = false;
+  // 마지막 전송 실패 안내(대화 히스토리는 오염하지 않고 입력창 아래에만 표시).
+  String? _error;
 
   int get _analysisId => widget.result?.analysisId ?? 0;
   bool get _canChat => _analysisId > 0;
@@ -104,17 +106,28 @@ class _ChatSheetState extends State<_ChatSheet> {
     final text = _controller.text.trim();
     if (text.isEmpty || _sending || !_canChat) return;
     _controller.clear();
+    final userMsg = ChatMessage(ChatRole.user, text);
     setState(() {
-      _messages.add(ChatMessage(ChatRole.user, text));
+      _error = null;
+      _messages.add(userMsg);
       _sending = true;
     });
     _toBottom();
     final reply = await ChatApi.send(analysisId: _analysisId, history: _messages);
     if (!mounted) return;
     setState(() {
-      _messages.add(ChatMessage(ChatRole.assistant,
-          reply ?? '지금은 답변을 드리기 어려워요. 잠시 후 다시 시도해 주세요.'));
       _sending = false;
+      if (reply != null) {
+        _messages.add(ChatMessage(ChatRole.assistant, reply));
+      } else {
+        // 실패한 발화를 히스토리에서 빼 다음 요청을 오염시키지 않고(연속 USER 방지),
+        // 입력창에 원문을 되돌려 재시도할 수 있게 한다.
+        _messages.remove(userMsg);
+        _controller.text = text;
+        _controller.selection =
+            TextSelection.collapsed(offset: _controller.text.length);
+        _error = '지금은 답변을 드리기 어려워요. 잠시 후 다시 시도해 주세요.';
+      }
     });
     _toBottom();
   }
@@ -161,11 +174,18 @@ class _ChatSheetState extends State<_ChatSheet> {
             padding: EdgeInsets.only(bottom: 4),
             child: Text('저장된 분석 결과에서만 상담할 수 있어요.', style: AppText.caption),
           )
-        else
+        else ...[
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(_error!,
+                  style: const TextStyle(fontSize: 14, color: AppColors.high)),
+            ),
           Row(children: [
             Expanded(
               child: TextField(
                 controller: _controller,
+                enabled: !_sending,
                 minLines: 1,
                 maxLines: 4,
                 textInputAction: TextInputAction.send,
@@ -190,11 +210,13 @@ class _ChatSheetState extends State<_ChatSheet> {
             ),
             const SizedBox(width: 10),
             IconButton(
+              tooltip: '보내기',
               onPressed: _sending ? null : _send,
               icon: Icon(Icons.arrow_circle_up,
                   size: 38, color: _sending ? AppColors.t3 : AppColors.blue),
             ),
           ]),
+        ],
       ],
     );
   }
