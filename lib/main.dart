@@ -54,7 +54,7 @@ class SafeFamApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: '세이프팸',
+      title: 'SafeFam',
       debugShowCheckedModeBanner: false,
       theme: buildSafeFamTheme(),
       navigatorKey: NotificationService.navigatorKey,

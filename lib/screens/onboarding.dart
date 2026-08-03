@@ -20,7 +20,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     _OnbData(
       character: true,
       icon: null,
-      title: '세이프팸이 가족을 지켜요',
+      title: 'SafeFam이 가족을 지켜요',
       desc: '문자와 전화 속 금융사기를 자동으로 찾아내\n위험할 때 바로 알려드려요.',
     ),
     _OnbData(

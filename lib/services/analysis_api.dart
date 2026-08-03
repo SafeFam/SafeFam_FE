@@ -603,7 +603,7 @@ class AnalysisResult {
   /// explanation은 마스킹된 입력으로 생성되지만, 만약 번호·계좌·링크가 섞여 있어도
   /// 외부(문자·시스템 공유)로 새지 않도록 공유 직전 한 번 더 마스킹한다(프론트 1차 마스킹 책임).
   String get shareSummary {
-    final b = StringBuffer('[세이프팸] 문자 분석 결과\n');
+    final b = StringBuffer('[SafeFam] 문자 분석 결과\n');
     final level = riskLevel;
     if (level != null) {
       final score = riskScore == null ? '' : ' ($riskScore점)';
@@ -612,7 +612,7 @@ class AnalysisResult {
     if (category != null) b.writeln('유형: ${category!.label}');
     final ex = _redactPii(explanation.trim());
     if (ex.isNotEmpty) b.writeln('\n$ex');
-    b.write('\n\n※ 세이프팸이 분석한 결과예요. 의심되면 링크·전화에 응하지 마세요.');
+    b.write('\n\n※ SafeFam이 분석한 결과예요. 의심되면 링크·전화에 응하지 마세요.');
     return b.toString();
   }
 }

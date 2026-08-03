@@ -195,7 +195,7 @@ void showShareSheet(BuildContext c, {AnalysisResult? result}) {
       ? '검찰 사칭 문자'
       : result.category?.label ?? '문자 분석 결과';
   final text = result?.shareSummary ??
-      '[세이프팸] 문자 분석 결과\n위험도: 위험\n의심되면 링크·전화에 응하지 마세요.';
+      '[SafeFam] 문자 분석 결과\n위험도: 위험\n의심되면 링크·전화에 응하지 마세요.';
 
   void toast(String msg) {
     if (!c.mounted) return;

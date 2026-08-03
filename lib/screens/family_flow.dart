@@ -208,7 +208,7 @@ class _InviteCodeScreenState extends State<InviteCodeScreen> {
       children: [
         const Text('가족에게 코드를 보내세요', style: AppText.titleResult, textAlign: TextAlign.center),
         const SizedBox(height: 6),
-        const Text('보호할 가족의 폰 세이프팸에\n이 코드를 입력하면 연결돼요',
+        const Text('보호할 가족의 폰 SafeFam에\n이 코드를 입력하면 연결돼요',
             textAlign: TextAlign.center, style: AppText.caption),
         const SizedBox(height: 18),
         SfCard(
