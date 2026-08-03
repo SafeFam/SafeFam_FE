@@ -5,6 +5,7 @@ import 'theme/app_theme.dart';
 import 'widgets/common.dart';
 import 'models.dart';
 import 'services/analysis_api.dart';
+import 'services/chat_api.dart';
 import 'util/launchers.dart';
 
 Future<void> _showSheet(BuildContext c, Widget child, {double? heightFactor}) {
@@ -49,13 +50,92 @@ Widget _grab() => Center(
     );
 
 /// 6 · 대응 챗봇 — 결과 위로 올라오는 시트.
-/// [result]가 저장된 분석(analysisId>0)이면 우상단 신고 아이콘으로 익명 신고할 수 있다.
+/// 저장된 분석(analysisId>0)이면 위험도·근거를 컨텍스트로 실제 상담(`POST /chat`)하고,
+/// 우상단 신고 아이콘으로 익명 신고할 수 있다.
 void showChatbotSheet(BuildContext c, {AnalysisResult? result}) {
-  final canReport = (result?.analysisId ?? 0) > 0;
-  _showSheet(
-    c,
-    heightFactor: 0.82,
-    Column(
+  _showSheet(c, heightFactor: 0.82, _ChatSheet(result: result));
+}
+
+/// 실제 멀티턴 상담 시트. 서버가 analysisId로 위험도·근거를 자동 주입하므로
+/// 클라이언트는 대화 이력만 매 요청에 함께 보낸다.
+class _ChatSheet extends StatefulWidget {
+  final AnalysisResult? result;
+  const _ChatSheet({this.result});
+  @override
+  State<_ChatSheet> createState() => _ChatSheetState();
+}
+
+class _ChatSheetState extends State<_ChatSheet> {
+  final _controller = TextEditingController();
+  final _scroll = ScrollController();
+  // 서버로 보낼 실제 대화(사용자/도우미 번갈아). 첫 인사말은 화면 안내용이라 제외.
+  final List<ChatMessage> _messages = [];
+  bool _sending = false;
+  // 마지막 전송 실패 안내(대화 히스토리는 오염하지 않고 입력창 아래에만 표시).
+  String? _error;
+
+  int get _analysisId => widget.result?.analysisId ?? 0;
+  bool get _canChat => _analysisId > 0;
+
+  String get _greeting {
+    final level = widget.result?.riskLevel;
+    if (level == RiskLevel.high) {
+      return '방금 분석 결과를 바탕으로 도와드릴게요. 링크·전화에 응답하지 마시고, '
+          '무엇이 궁금하신지 편하게 물어보세요.';
+    }
+    return '분석 결과를 바탕으로 도와드릴게요. 무엇이 궁금하세요?';
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  void _toBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scroll.hasClients) {
+        _scroll.animateTo(_scroll.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 200), curve: Curves.easeOut);
+      }
+    });
+  }
+
+  Future<void> _send() async {
+    final text = _controller.text.trim();
+    if (text.isEmpty || _sending || !_canChat) return;
+    _controller.clear();
+    final userMsg = ChatMessage(ChatRole.user, text);
+    setState(() {
+      _error = null;
+      _messages.add(userMsg);
+      _sending = true;
+    });
+    _toBottom();
+    final reply = await ChatApi.send(analysisId: _analysisId, history: _messages);
+    if (!mounted) return;
+    setState(() {
+      _sending = false;
+      if (reply != null) {
+        _messages.add(ChatMessage(ChatRole.assistant, reply));
+      } else {
+        // 실패한 발화를 히스토리에서 빼 다음 요청을 오염시키지 않고(연속 USER 방지),
+        // 입력창에 원문을 되돌려 재시도할 수 있게 한다.
+        _messages.remove(userMsg);
+        _controller.text = text;
+        _controller.selection =
+            TextSelection.collapsed(offset: _controller.text.length);
+        _error = '지금은 답변을 드리기 어려워요. 잠시 후 다시 시도해 주세요.';
+      }
+    });
+    _toBottom();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final canReport = _canChat;
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _grab(),
@@ -67,38 +147,79 @@ void showChatbotSheet(BuildContext c, {AnalysisResult? result}) {
           if (canReport)
             IconButton(
                 tooltip: '이 문자 신고하기',
-                onPressed: () => showReportSheet(c, result: result!),
+                onPressed: () => showReportSheet(context, result: widget.result!),
                 icon: const Icon(Icons.flag_outlined, color: AppColors.high)),
         ]),
         const Divider(color: AppColors.line),
         const SizedBox(height: 8),
-        const _Bubble(bot: true, text: '방금 위험 문자(87점)가 왔어요. 링크는 누르지 마시고, 무엇이 궁금하세요?'),
-        const SizedBox(height: 11),
-        const Wrap(spacing: 8, children: [
-          SfChip('이미 송금했어요', selected: true),
-          SfChip('신고할래요'),
-        ]),
-        const SizedBox(height: 11),
-        const _Bubble(bot: false, text: '돈을 보냈는데 어떡하죠?'),
-        const SizedBox(height: 11),
-        const _Bubble(bot: true, text: '바로 은행에 지급정지를 신청하세요. 도와드릴게요.'),
-        const Spacer(),
-        Row(children: [
-          Expanded(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-              decoration: BoxDecoration(
-                  border: Border.all(color: AppColors.line, width: 1.5),
-                  borderRadius: BorderRadius.circular(24)),
-              child: const Text('메시지 입력', style: TextStyle(color: AppColors.t3, fontSize: 16)),
-            ),
+        Expanded(
+          child: ListView(
+            controller: _scroll,
+            children: [
+              _Bubble(bot: true, text: _greeting),
+              for (final m in _messages) ...[
+                const SizedBox(height: 11),
+                _Bubble(bot: m.role == ChatRole.assistant, text: m.content),
+              ],
+              if (_sending) ...[
+                const SizedBox(height: 11),
+                const _Bubble(bot: true, text: '…'),
+              ],
+            ],
           ),
-          const SizedBox(width: 10),
-          const Icon(Icons.arrow_circle_up, size: 38, color: AppColors.blue),
-        ]),
+        ),
+        const SizedBox(height: 8),
+        if (!_canChat)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 4),
+            child: Text('저장된 분석 결과에서만 상담할 수 있어요.', style: AppText.caption),
+          )
+        else ...[
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(_error!,
+                  style: const TextStyle(fontSize: 14, color: AppColors.high)),
+            ),
+          Row(children: [
+            Expanded(
+              child: TextField(
+                controller: _controller,
+                enabled: !_sending,
+                minLines: 1,
+                maxLines: 4,
+                textInputAction: TextInputAction.send,
+                onSubmitted: (_) => _send(),
+                style: const TextStyle(fontSize: 16),
+                decoration: InputDecoration(
+                  hintText: '메시지 입력',
+                  hintStyle: const TextStyle(color: AppColors.t3, fontSize: 16),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(24),
+                      borderSide: const BorderSide(color: AppColors.line, width: 1.5)),
+                  enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(24),
+                      borderSide: const BorderSide(color: AppColors.line, width: 1.5)),
+                  focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(24),
+                      borderSide: const BorderSide(color: AppColors.blue, width: 1.5)),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            IconButton(
+              tooltip: '보내기',
+              onPressed: _sending ? null : _send,
+              icon: Icon(Icons.arrow_circle_up,
+                  size: 38, color: _sending ? AppColors.t3 : AppColors.blue),
+            ),
+          ]),
+        ],
       ],
-    ),
-  );
+    );
+  }
 }
 
 /// 9 · 신고 시트. 저장된 분석([result].analysisId>0)만 신고할 수 있다.
