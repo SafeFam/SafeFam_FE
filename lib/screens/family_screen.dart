@@ -3,6 +3,7 @@ import '../theme/app_theme.dart';
 import '../widgets/common.dart';
 import '../services/app_prefs.dart';
 import '../services/family_api.dart';
+import 'family_alerts_screen.dart';
 import 'family_flow.dart';
 import 'ward_logs_screen.dart';
 
@@ -190,6 +191,14 @@ class _FamilyScreenState extends State<FamilyScreen> {
               const Text('가족 보호', style: AppText.titleScreen),
               const Spacer(),
               IconButton(
+                  tooltip: '가족 안전 알림',
+                  onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const FamilyAlertsScreen())),
+                  icon: const Icon(Icons.notifications_none, color: AppColors.t1)),
+              IconButton(
+                  tooltip: '초대 코드 만들기',
                   onPressed: _invite,
                   icon: const Icon(Icons.person_add_alt, color: AppColors.t1)),
             ],
