@@ -19,7 +19,7 @@ class SplashScreen extends StatelessWidget {
           children: [
             const CharacterDisc(142),
             const SizedBox(height: 18),
-            const Text('세이프팸', style: AppText.logo),
+            const Text('SafeFam', style: AppText.logo),
             const SizedBox(height: 8),
             const Text('우리 가족 금융 지킴이', style: AppText.caption),
             const SizedBox(height: 28),

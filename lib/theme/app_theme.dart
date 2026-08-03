@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// 세이프팸 디자인 토큰 — Figma 스펙 시트와 1:1 대응.
+/// SafeFam 디자인 토큰 — Figma 스펙 시트와 1:1 대응.
 class AppColors {
   static const blue = Color(0xFF3F77DB);
   static const blueLight = Color(0xFF7B9BE8);

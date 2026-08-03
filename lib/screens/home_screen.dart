@@ -136,7 +136,7 @@ class _HomeScreenState extends State<HomeScreen> {
           padding: const EdgeInsets.fromLTRB(18, 12, 18, 8),
           child: Row(
             children: [
-              const Text('세이프팸',
+              const Text('SafeFam',
                   style: TextStyle(
                       fontSize: 19,
                       fontWeight: FontWeight.w700,
@@ -170,7 +170,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     SizedBox(height: 10),
                     Text('지금 안전해요', style: AppText.titleLarge),
                     SizedBox(height: 6),
-                    Text('세이프팸이 자동으로 지키는 중', style: AppText.caption),
+                    Text('SafeFam이 자동으로 지키는 중', style: AppText.caption),
                   ]),
                 ),
                 const SizedBox(height: 16),

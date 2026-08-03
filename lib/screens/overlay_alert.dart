@@ -24,7 +24,7 @@ class OverlayAlertScreen extends StatelessWidget {
                 children: const [
                   Icon(Icons.warning_amber_rounded, color: Colors.white, size: 18),
                   SizedBox(width: 6),
-                  Text('세이프팸 긴급 경고',
+                  Text('SafeFam 긴급 경고',
                       style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
                 ],
               ),
