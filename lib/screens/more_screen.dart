@@ -6,6 +6,7 @@ import 'family_flow.dart';
 import 'mypage_screen.dart';
 import 'login_screen.dart';
 import 'whitelist_screen.dart';
+import 'history_screen.dart';
 import '../services/auth_api.dart';
 import '../services/app_settings.dart';
 
@@ -182,6 +183,22 @@ class _MoreScreenState extends State<MoreScreen> {
     );
   }
 
+  /// '대응 도우미'는 분석 결과 컨텍스트가 있어야 상담할 수 있다(서버가 analysisId로
+  /// 위험도·근거를 주입). 그래서 이력에서 분석을 고른 뒤 상세의 '대응 도우미'로 잇는다.
+  void _openHelpChat() {
+    _toast('상담할 분석을 선택하세요');
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          backgroundColor: AppColors.bg,
+          appBar: AppBar(title: const Text('상담할 분석 선택')),
+          body: const HistoryScreen(),
+        ),
+      ),
+    );
+  }
+
   Future<void> _logout(BuildContext context) async {
     final ok = await showDialog<bool>(
       context: context,
@@ -244,14 +261,11 @@ class _MoreScreenState extends State<MoreScreen> {
             ]),
           ),
           const SizedBox(height: 16),
-          const SectionLabel('기록'),
+          const SectionLabel('도움말'),
           SfCard(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Column(children: [
-              _link(Icons.flag_outlined, '내 신고 내역'),
-              const Divider(color: AppColors.line, height: 1),
-              _link(Icons.smart_toy_outlined, '도움말 챗봇'),
-            ]),
+            child: _link(Icons.smart_toy_outlined, '대응 도우미',
+                onTap: _openHelpChat),
           ),
           const SizedBox(height: 16),
           const SectionLabel('가족'),
