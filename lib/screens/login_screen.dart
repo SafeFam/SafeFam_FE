@@ -138,15 +138,11 @@ class _LoginScreenState extends State<LoginScreen> {
       body: SafeArea(
         child: Stack(
           children: [
-            LayoutBuilder(
-              builder: (context, constraints) => SingleChildScrollView(
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                  child: IntrinsicHeight(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(18, 10, 18, 18),
-                      child: Column(
-                        children: [
+            SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(18, 10, 18, 18),
+                child: Column(
+                  children: [
                           const SizedBox(height: 48),
                           const CharacterDisc(100),
                           const SizedBox(height: 14),
@@ -176,17 +172,14 @@ class _LoginScreenState extends State<LoginScreen> {
                                 style: TextStyle(
                                     fontSize: 14, color: AppColors.t2)),
                           ),
-                          const Spacer(),
+                          const SizedBox(height: 40),
                           _kakao(),
                           const SizedBox(height: 12),
                           SfButton('구글로 계속하기',
                               icon: Icons.g_mobiledata,
                               variant: SfBtn.ghost,
                               onTap: _loading ? null : () => _social('google')),
-                        ],
-                      ),
-                    ),
-                  ),
+                  ],
                 ),
               ),
             ),
