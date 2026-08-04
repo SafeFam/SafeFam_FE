@@ -81,9 +81,13 @@ class _ChatSheetState extends State<_ChatSheet> {
 
   int get _analysisId => widget.result?.analysisId ?? 0;
   bool get _canChat => _analysisId > 0;
-  // 백엔드는 유형(category)이 잡힌 분석에서만 상담을 허용한다(없으면 409
-  // CHAT_ANALYSIS_NOT_READY). 유형이 없는 분석은 상담 대신 안내를 보여준다.
-  bool get _chatSupported => _canChat && widget.result?.category != null;
+  // 백엔드는 유형(category)이 잡히고 설명(explanation)이 채워진 분석에서만 상담을
+  // 허용한다(없으면 409 CHAT_ANALYSIS_NOT_READY). fromJson이 explanation을 ''로
+  // 둘 수 있어 category만으로는 부족하다 — 미완 분석을 전송 경로에서 걸러낸다.
+  bool get _chatSupported =>
+      _canChat &&
+      widget.result?.category != null &&
+      widget.result?.explanation.trim().isNotEmpty == true;
 
   String get _greeting {
     final level = widget.result?.riskLevel;
@@ -166,10 +170,12 @@ class _ChatSheetState extends State<_ChatSheet> {
             children: [
               _Bubble(
                   bot: true,
-                  text: _chatSupported
-                      ? _greeting
-                      : '이 결과는 대응 상담을 지원하지 않아요. 결과 화면의 사후 대응 안내와 '
-                          '긴급 연락처를 참고해 주세요.'),
+                  text: !_canChat
+                      ? '저장된 분석 결과에서만 상담할 수 있어요.'
+                      : _chatSupported
+                          ? _greeting
+                          : '이 결과는 대응 상담을 지원하지 않아요. 결과 화면의 사후 대응 안내와 '
+                              '긴급 연락처를 참고해 주세요.'),
               for (final m in _messages) ...[
                 const SizedBox(height: 11),
                 _Bubble(bot: m.role == ChatRole.assistant, text: m.content),
@@ -188,7 +194,9 @@ class _ChatSheetState extends State<_ChatSheet> {
             child: Text(
                 !_canChat
                     ? '저장된 분석 결과에서만 상담할 수 있어요.'
-                    : '이 분석 결과는 대응 상담을 지원하지 않아요.\n(위험 유형이 확인된 결과에서 이용할 수 있어요.)',
+                    : widget.result?.category == null
+                        ? '이 분석 결과는 대응 상담을 지원하지 않아요.\n(위험 유형이 확인된 결과에서 이용할 수 있어요.)'
+                        : '분석 설명이 준비된 결과에서만 대응 상담을 이용할 수 있어요.',
                 style: AppText.caption),
           )
         else ...[
