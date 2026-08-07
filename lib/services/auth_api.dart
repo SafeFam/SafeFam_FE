@@ -8,7 +8,7 @@ import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 /// 인증 관련 서버 통신 담당.
 ///
 /// 백엔드(SafeFam_BE) 확인된 계약 (휴대폰 기반 확정, 2026-07-17 #26):
-///  - baseUrl: `http://localhost:8080` (context-path 없음)
+///  - context-path 없음 (배포 `https://safefam.site` · 로컬 `http://localhost:8080`)
 ///  - 공통 응답 포맷 ApiResponse: { status: "SUCCESS"|"ERROR", message, data }
 ///  - 토큰은 응답 바디로 옴(TokenResponse):
 ///      { tokenType:"Bearer", accessToken, refreshToken, expiresIn(초) }
@@ -38,14 +38,17 @@ import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 ///  - 둘 다 보호된 API → Authorization: Bearer 필수.
 ///  ※ 구글 소셜 로그인은 백엔드 엔드포인트 미정 → 해당 분기만 껍데기 유지.
 class AuthApi {
-  /// 서버 주소. 빌드시 `--dart-define=SAFEFAM_API_BASE_URL=...`로 주입하고,
-  /// 없으면 개발 기본값(에뮬레이터→호스트 localhost)을 쓴다.
-  /// - Android 에뮬레이터에서 호스트 PC의 localhost는 `10.0.2.2`로 접근한다
-  ///   (에뮬레이터의 `localhost`는 에뮬레이터 자신을 가리킴).
-  /// - 실기기: 같은 네트워크의 PC IP, 배포: `--dart-define`으로 실제 https 도메인.
+  /// 서버 주소. 기본값은 **EC2에 배포된 운영 서버**라 별도 주입 없이 실기기에서
+  /// 바로 붙는다. 로컬 백엔드로 바꿔 붙일 때만 빌드시 주입한다.
+  /// - 로컬(에뮬레이터): `--dart-define=SAFEFAM_API_BASE_URL=http://10.0.2.2:8080`
+  ///   (에뮬레이터의 `localhost`는 에뮬레이터 자신이라, 호스트 PC는 `10.0.2.2`로 접근)
+  /// - 로컬(실기기): 같은 네트워크의 PC IP를 같은 방식으로 주입.
+  /// ※ 배포 서버는 **도메인으로만** 접근한다. nginx가 443에서 받아 백엔드로 넘기며
+  ///   인증서가 `safefam.site` 발급이라, IP를 직접 넣으면 8080은 미개방·443은
+  ///   인증서 도메인 불일치로 실패한다.
   static const String baseUrl = String.fromEnvironment(
     'SAFEFAM_API_BASE_URL',
-    defaultValue: 'http://10.0.2.2:8080',
+    defaultValue: 'https://safefam.site',
   );
 
   /// 메모리 캐시(요청 헤더 구성용). 원본은 [_storage]에 보안 저장되며,
