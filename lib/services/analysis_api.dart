@@ -406,7 +406,11 @@ enum IndicatorType {
   sensitiveInformation('SENSITIVE_INFORMATION', '개인정보 요구'),
   urgency('URGENCY', '긴급성 압박'),
   shortenedUrl('SHORTENED_URL', '단축 URL'),
-  maliciousUrl('MALICIOUS_URL', '악성 URL');
+  maliciousUrl('MALICIOUS_URL', '악성 URL'),
+  aiEvidence('AI_EVIDENCE', 'AI 분석 근거'),
+  // 위험 신호가 아니라 '일부 분석 미완료' 통지. 위험 근거 카드엔 노출하지 않고
+  // 부분성공 배너로 어떤 레이어가 빠졌는지 안내하는 데 쓴다([failedTrackLayerLabel]).
+  analysisTrackFailure('ANALYSIS_TRACK_FAILURE', '분석 일부 미완료');
 
   final String wire;
   final String label;
@@ -418,6 +422,32 @@ enum IndicatorType {
       if (t.wire == v) return t;
     }
     return null;
+  }
+}
+
+/// ANALYSIS_TRACK_FAILURE 지표에서 사용자에게 보여줄 **한국어 레이어명**을 뽑는다.
+/// 백엔드는 실패 트랙을 `"Analysis track unavailable: <TOKEN>"`(영어 + 내부 엔진명,
+/// 예: `URL:VIRUSTOTAL`, `TEXT:GEMINI`) 설명으로 내려주므로, 그 원문을 그대로 노출하지
+/// 않고 3중 스코어 레이어(문맥/링크/글자 패턴)로만 환원한다. 실패 지표가 아니거나
+/// 알 수 없는 토큰이면 null — 내부 문구가 새지 않도록 배너에서 생략된다.
+String? failedTrackLayerLabel(Indicator ind) {
+  if (ind.type != IndicatorType.analysisTrackFailure) return null;
+  const prefix = 'Analysis track unavailable:';
+  var token = ind.description.trim();
+  if (token.startsWith(prefix)) token = token.substring(prefix.length).trim();
+  // 토큰은 `TEXT`, `TEXT:GEMINI`, `URL`, `URL:VIRUSTOTAL`, `RULES`, `PIPELINE` 형태.
+  // 앞부분(레이어군)만 취해 내부 엔진명은 감춘다.
+  switch (token.split(':').first.trim().toUpperCase()) {
+    case 'TEXT':
+      return '문맥 분석';
+    case 'URL':
+      return '링크 보안 분석';
+    case 'RULES':
+      return '글자 패턴 분석';
+    case 'PIPELINE':
+      return '전체 분석';
+    default:
+      return null;
   }
 }
 
