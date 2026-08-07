@@ -8,7 +8,7 @@ import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 /// 인증 관련 서버 통신 담당.
 ///
 /// 백엔드(SafeFam_BE) 확인된 계약 (휴대폰 기반 확정, 2026-07-17 #26):
-///  - context-path 없음 (배포 `https://safefam.site` · 로컬 `http://localhost:8080`)
+///  - context-path 없음 (배포 `https://safefam.site`; 로컬 주소는 아래 [baseUrl] 안내 참조)
 ///  - 공통 응답 포맷 ApiResponse: { status: "SUCCESS"|"ERROR", message, data }
 ///  - 토큰은 응답 바디로 옴(TokenResponse):
 ///      { tokenType:"Bearer", accessToken, refreshToken, expiresIn(초) }
