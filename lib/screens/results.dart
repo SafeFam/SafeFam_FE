@@ -203,6 +203,9 @@ IconData _indicatorIcon(IndicatorType? t) => switch (t) {
       IndicatorType.urgency => Icons.notifications_active,
       IndicatorType.shortenedUrl => Icons.link,
       IndicatorType.maliciousUrl => Icons.dangerous_outlined,
+      IndicatorType.aiEvidence => Icons.psychology_outlined,
+      // 위험 근거 카드엔 노출하지 않지만(build에서 제외) switch 완전성을 위해 둔다.
+      IndicatorType.analysisTrackFailure => Icons.info_outline,
       null => Icons.info_outline,
     };
 
@@ -325,6 +328,15 @@ class _ResultScreenState extends State<ResultScreen> {
     final level = r.riskLevel ?? RiskLevel.high;
     final score = r.riskScore ?? 0;
     final partial = r.status == AnalysisStatus.partialSuccess;
+    // 위험 근거 카드엔 실패 통지(ANALYSIS_TRACK_FAILURE)를 섞지 않는다. 실패한 레이어는
+    // 한국어로 환원해 부분성공 배너로만 안내한다(내부 엔진명·영어 원문 노출 방지).
+    final riskSignals = r.indicators
+        .where((i) => i.type != IndicatorType.analysisTrackFailure)
+        .toList(growable: false);
+    final failedLayers = <String>{
+      for (final i in r.indicators)
+        if (failedTrackLayerLabel(i) case final label?) label,
+    }.toList(growable: false);
     return Scaffold(
       appBar: _resultBar(context, '분석 결과',
           result: r, onDelete: _isSaved && !_busy ? _confirmDelete : null),
@@ -342,7 +354,7 @@ class _ResultScreenState extends State<ResultScreen> {
           _VoiceListenSection(_spokenResult(r, level)),
           if (partial) ...[
             const SizedBox(height: 12),
-            _partialBanner(),
+            _partialBanner(failedLayers),
           ],
           const SizedBox(height: 16),
           // 3중 스코어 게이지
@@ -395,14 +407,14 @@ class _ResultScreenState extends State<ResultScreen> {
             ),
           ),
           // 위험 근거
-          if (r.indicators.isNotEmpty) ...[
+          if (riskSignals.isNotEmpty) ...[
             const SizedBox(height: 12),
             SfCard(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const SectionLabel('이런 신호가 잡혔어요'),
-                  for (final ind in r.indicators)
+                  for (final ind in riskSignals)
                     Padding(
                       padding: const EdgeInsets.only(top: 9),
                       child: Row(
@@ -508,22 +520,33 @@ class _ResultScreenState extends State<ResultScreen> {
     );
   }
 
-  /// 부분 성공 안내 배너 — 점수·등급은 보여주되 일부 분석이 빠졌음을 알린다.
-  Widget _partialBanner() => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-            color: AppColors.med.withOpacity(0.10),
-            borderRadius: BorderRadius.circular(14)),
-        child: Row(
-          children: const [
-            Icon(Icons.info_outline, color: AppColors.med, size: 20),
-            SizedBox(width: 9),
-            Expanded(
-                child: Text('일부 분석을 완료하지 못했어요. 아래 결과는 가능한 항목만으로 계산됐어요.',
-                    style: TextStyle(fontSize: 14, color: AppColors.t1, height: 1.4))),
-          ],
-        ),
-      );
+  /// 부분 성공 안내 배너(외부 AI 장애 시 안전모드) — 점수·등급은 보여주되, 어떤 분석이
+  /// 빠졌는지 한국어 레이어명으로 알리고, 보수적으로 대응하도록 안내한다.
+  Widget _partialBanner(List<String> failedLayers) {
+    final which = failedLayers.isEmpty
+        ? '일부 분석을 완료하지 못했어요.'
+        : '${failedLayers.join(' · ')}을(를) 완료하지 못했어요.';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+          color: AppColors.med.withOpacity(0.10),
+          borderRadius: BorderRadius.circular(14)),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.info_outline, color: AppColors.med, size: 20),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Text(
+                '$which 아래 결과는 가능한 분석만으로 계산했어요. '
+                '안전하다는 뜻은 아니니, 의심되면 링크·전화에 응하지 말고 공식 앱·대표번호로 확인하세요.',
+                style: const TextStyle(
+                    fontSize: 14, color: AppColors.t1, height: 1.45)),
+          ),
+        ],
+      ),
+    );
+  }
 
   /// 분석 실패 화면 — '안전'으로 오인하지 않도록 별도 안내.
   Widget _failureScaffold(BuildContext context) => Scaffold(
