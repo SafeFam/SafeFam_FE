@@ -321,13 +321,16 @@ class _ConnectNamingScreenState extends State<ConnectNamingScreen> {
 
   Future<void> _save() async {
     final name = _name.text.trim();
-    if (name.isEmpty) {
+    final hadName = (widget.member.relationship?.trim().isNotEmpty ?? false);
+    // 처음 정하는 자리에서 빈 값은 실수로 보고 막는다. 반대로 이미 정해둔 이름을
+    // 비우는 건 '이름 지우기'라는 뜻이므로 null로 보내 서버에서 해제한다.
+    if (name.isEmpty && !hadName) {
       _snack('어떻게 부를지 입력해 주세요.');
       return;
     }
     setState(() => _saving = true);
-    final ok =
-        await FamilyApi.updateRelationship(widget.member.linkId, name);
+    final ok = await FamilyApi.updateRelationship(
+        widget.member.linkId, name.isEmpty ? null : name);
     if (!mounted) return;
     if (!ok) {
       setState(() => _saving = false);
@@ -419,8 +422,11 @@ class _ConnectNamingScreenState extends State<ConnectNamingScreen> {
                 ),
               ),
               const SizedBox(height: 8),
-              const Text('가족 목록과 안전 알림에 이 이름으로 표시돼요. 직접 고쳐도 돼요.',
-                  style: TextStyle(fontSize: 13, color: AppColors.t3)),
+              Text(
+                  isEdit
+                      ? '가족 목록에 이 이름으로 표시돼요. 비우고 저장하면 이름을 지워요.'
+                      : '가족 목록에 이 이름으로 표시돼요. 직접 고쳐도 돼요.',
+                  style: const TextStyle(fontSize: 13, color: AppColors.t3)),
               const SizedBox(height: 24),
               SfButton(_saving ? '저장 중…' : '저장하기',
                   onTap: _saving ? null : _save),
