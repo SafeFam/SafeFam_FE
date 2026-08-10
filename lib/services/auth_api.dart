@@ -8,7 +8,7 @@ import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 /// 인증 관련 서버 통신 담당.
 ///
 /// 백엔드(SafeFam_BE) 확인된 계약 (휴대폰 기반 확정, 2026-07-17 #26):
-///  - context-path 없음 (배포 `https://safefam.site`; 로컬 주소는 아래 [baseUrl] 안내 참조)
+///  - context-path 없음 (배포 `https://api.safefam.site`; 로컬 주소는 아래 [baseUrl] 안내 참조)
 ///  - 공통 응답 포맷 ApiResponse: { status: "SUCCESS"|"ERROR", message, data }
 ///  - 토큰은 응답 바디로 옴(TokenResponse):
 ///      { tokenType:"Bearer", accessToken, refreshToken, expiresIn(초) }
@@ -43,12 +43,14 @@ class AuthApi {
   /// - 로컬(에뮬레이터): `--dart-define=SAFEFAM_API_BASE_URL=http://10.0.2.2:8080`
   ///   (에뮬레이터의 `localhost`는 에뮬레이터 자신이라, 호스트 PC는 `10.0.2.2`로 접근)
   /// - 로컬(실기기): 같은 네트워크의 PC IP를 같은 방식으로 주입.
-  /// ※ 배포 서버는 **도메인으로만** 접근한다. nginx가 443에서 받아 백엔드로 넘기며
-  ///   인증서가 `safefam.site` 발급이라, IP를 직접 넣으면 8080은 미개방·443은
-  ///   인증서 도메인 불일치로 실패한다.
+  /// ★API는 **`api.` 서브도메인**이다. 루트 `safefam.site`는 관리자 웹(SafeFam_Web,
+  ///   Vercel 배포)이 점유해서, 거기로 API를 부르면 308로 `www.`에 리다이렉트되고
+  ///   SPA 문서가 돌아온다(2026-08-10 이전). 앱·웹 모두 `api.safefam.site`를 쓴다.
+  /// ※ 도메인으로만 접근한다 — nginx가 443에서 받아 넘기고 인증서가 `api.safefam.site`
+  ///   발급이라, IP를 직접 넣으면 8080 미개방·443 인증서 불일치로 실패한다.
   static const String baseUrl = String.fromEnvironment(
     'SAFEFAM_API_BASE_URL',
-    defaultValue: 'https://safefam.site',
+    defaultValue: 'https://api.safefam.site',
   );
 
   /// 메모리 캐시(요청 헤더 구성용). 원본은 [_storage]에 보안 저장되며,
