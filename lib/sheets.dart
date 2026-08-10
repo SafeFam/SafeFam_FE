@@ -79,17 +79,28 @@ class _ChatSheetState extends State<_ChatSheet> {
   // 마지막 전송 실패 안내(대화 히스토리는 오염하지 않고 입력창 아래에만 표시).
   String? _error;
 
-  int get _analysisId => widget.result?.analysisId ?? 0;
-  bool get _canChat => _analysisId > 0;
-  // 백엔드는 유형(category)이 잡히고 설명(explanation)이 채워진 분석에서만 상담을
-  // 허용한다(없으면 409 CHAT_ANALYSIS_NOT_READY). fromJson이 explanation을 ''로
-  // 둘 수 있어 category만으로는 부족하다 — 미완 분석을 전송 경로에서 걸러낸다.
-  bool get _chatSupported =>
-      _canChat &&
-      widget.result?.category != null &&
-      widget.result?.explanation.trim().isNotEmpty == true;
+  /// 서버에 상담 근거로 넘길 분석 id. 없으면(또는 아직 상담에 쓸 수 없는 분석이면)
+  /// null로 두고 **분석 컨텍스트 없이 일반 상담**을 보낸다(SafeFam_BE #91에서
+  /// analysisId가 선택 항목이 됨). 예전처럼 입력창을 막지 않는다.
+  ///
+  /// 백엔드는 유형(category)과 설명(explanation)이 채워진 분석에서만 컨텍스트를
+  /// 붙일 수 있다(아니면 409 CHAT_ANALYSIS_NOT_READY). fromJson이 explanation을
+  /// ''로 둘 수 있어 category만으로는 부족하다 — 둘 다 확인해 걸러낸다.
+  int? get _contextId {
+    final r = widget.result;
+    if (r == null || r.analysisId <= 0) return null;
+    if (r.category == null || r.explanation.trim().isEmpty) return null;
+    return r.analysisId;
+  }
+
+  /// 이번 상담에 분석 근거가 실리는지(안내 문구 분기용).
+  bool get _hasContext => _contextId != null;
 
   String get _greeting {
+    if (!_hasContext) {
+      return '보이스피싱·스미싱 대응을 도와드릴게요. 무엇이 궁금하세요?\n'
+          '분석 결과에서 열면 그 문자에 딱 맞게 안내해 드려요.';
+    }
     final level = widget.result?.riskLevel;
     if (level == RiskLevel.high) {
       return '방금 분석 결과를 바탕으로 도와드릴게요. 링크·전화에 응답하지 마시고, '
@@ -116,7 +127,7 @@ class _ChatSheetState extends State<_ChatSheet> {
 
   Future<void> _send() async {
     final text = _controller.text.trim();
-    if (text.isEmpty || _sending || !_chatSupported) return;
+    if (text.isEmpty || _sending) return;
     _controller.clear();
     final userMsg = ChatMessage(ChatRole.user, text);
     setState(() {
@@ -125,7 +136,7 @@ class _ChatSheetState extends State<_ChatSheet> {
       _sending = true;
     });
     _toBottom();
-    final reply = await ChatApi.send(analysisId: _analysisId, history: _messages);
+    final reply = await ChatApi.send(analysisId: _contextId, history: _messages);
     if (!mounted) return;
     setState(() {
       _sending = false;
@@ -146,7 +157,8 @@ class _ChatSheetState extends State<_ChatSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final canReport = _canChat;
+    // 신고는 저장된 분석이 있어야 가능하다(상담과 달리 대상이 필요).
+    final canReport = (widget.result?.analysisId ?? 0) > 0;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -168,14 +180,7 @@ class _ChatSheetState extends State<_ChatSheet> {
           child: ListView(
             controller: _scroll,
             children: [
-              _Bubble(
-                  bot: true,
-                  text: !_canChat
-                      ? '저장된 분석 결과에서만 상담할 수 있어요.'
-                      : _chatSupported
-                          ? _greeting
-                          : '이 결과는 대응 상담을 지원하지 않아요. 결과 화면의 사후 대응 안내와 '
-                              '긴급 연락처를 참고해 주세요.'),
+              _Bubble(bot: true, text: _greeting),
               for (final m in _messages) ...[
                 const SizedBox(height: 11),
                 _Bubble(bot: m.role == ChatRole.assistant, text: m.content),
@@ -188,25 +193,20 @@ class _ChatSheetState extends State<_ChatSheet> {
           ),
         ),
         const SizedBox(height: 8),
-        if (!_chatSupported)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: Text(
-                !_canChat
-                    ? '저장된 분석 결과에서만 상담할 수 있어요.'
-                    : widget.result?.category == null
-                        ? '이 분석 결과는 대응 상담을 지원하지 않아요.\n(위험 유형이 확인된 결과에서 이용할 수 있어요.)'
-                        : '분석 설명이 준비된 결과에서만 대응 상담을 이용할 수 있어요.',
+        // 분석 근거 없이 답하는 중이면 그 사실만 조용히 알린다(입력은 막지 않음).
+        if (!_hasContext && widget.result != null)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 4),
+            child: Text('이 분석은 아직 근거가 준비되지 않아 일반 안내로 답해 드려요.',
                 style: AppText.caption),
-          )
-        else ...[
-          if (_error != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Text(_error!,
-                  style: const TextStyle(fontSize: 14, color: AppColors.high)),
-            ),
-          Row(children: [
+          ),
+        if (_error != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(_error!,
+                style: const TextStyle(fontSize: 14, color: AppColors.high)),
+          ),
+        Row(children: [
             Expanded(
               child: TextField(
                 controller: _controller,
@@ -240,8 +240,7 @@ class _ChatSheetState extends State<_ChatSheet> {
               icon: Icon(Icons.arrow_circle_up,
                   size: 38, color: _sending ? AppColors.t3 : AppColors.blue),
             ),
-          ]),
-        ],
+        ]),
       ],
     );
   }

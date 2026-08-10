@@ -29,6 +29,10 @@ import 'auth_api.dart' show AuthApi;
 ///
 ///  AnalysisResponse: { analysisId, status: PENDING|PROCESSING|COMPLETED|PARTIAL_SUCCESS|FAILED,
 ///   riskScore(0~100), riskLevel: LOW|MEDIUM|HIGH, category, explanation, failureCode?,
+///   failedTracks[]  ← 부분성공 시 못 돌린 트랙(SafeFam_BE #82, 2026-08-08 추가).
+///                     값은 영어·내부 엔진명(`URL:VIRUSTOTAL`)이라 그대로 노출 금지.
+///                     ※ BE 매퍼가 ANALYSIS_TRACK_FAILURE 지표 문자열을 파싱해 만드는
+///                       구조라, 필드가 비면 지표에서 뽑는 폴백을 유지한다.
 ///   scoreBreakdown{ llmScore, urlScore, patternScore },
 ///   indicators[{type,description}], urls[{originalUrl,resolvedUrl,suspicious}],
 ///   recommendedActions[{type,label,phoneNumber?,url?}], analyzedAt }
@@ -425,19 +429,14 @@ enum IndicatorType {
   }
 }
 
-/// ANALYSIS_TRACK_FAILURE 지표에서 사용자에게 보여줄 **한국어 레이어명**을 뽑는다.
-/// 백엔드는 실패 트랙을 `"Analysis track unavailable: <TOKEN>"`(영어 + 내부 엔진명,
-/// 예: `URL:VIRUSTOTAL`, `TEXT:GEMINI`) 설명으로 내려주므로, 그 원문을 그대로 노출하지
-/// 않고 3중 스코어 레이어(문맥/링크/글자 패턴)로만 환원한다. 실패 지표가 아니거나
-/// 알 수 없는 토큰이면 null — 내부 문구가 새지 않도록 배너에서 생략된다.
-String? failedTrackLayerLabel(Indicator ind) {
-  if (ind.type != IndicatorType.analysisTrackFailure) return null;
-  const prefix = 'Analysis track unavailable:';
-  var token = ind.description.trim();
-  if (token.startsWith(prefix)) token = token.substring(prefix.length).trim();
-  // 토큰은 `TEXT`, `TEXT:GEMINI`, `URL`, `URL:VIRUSTOTAL`, `RULES`, `PIPELINE` 형태.
-  // 앞부분(레이어군)만 취해 내부 엔진명은 감춘다.
-  switch (token.split(':').first.trim().toUpperCase()) {
+/// 실패 트랙 토큰을 사용자에게 보여줄 **한국어 레이어명**으로 바꾼다.
+///
+/// 서버가 주는 토큰은 `TEXT`, `TEXT:GEMINI`, `URL`, `URL:VIRUSTOTAL`, `RULES`,
+/// `PIPELINE` 형태로 **영어 + 내부 엔진명**이라 그대로 노출하지 않는다. 앞부분
+/// (레이어군)만 취해 3중 스코어 레이어(문맥/링크/글자 패턴)로 환원하고, 모르는
+/// 토큰이면 null을 돌려 배너에서 생략한다(내부 문구 유출 방지).
+String? failedTrackLayerLabelOf(String track) {
+  switch (track.split(':').first.trim().toUpperCase()) {
     case 'TEXT':
       return '문맥 분석';
     case 'URL':
@@ -449,6 +448,19 @@ String? failedTrackLayerLabel(Indicator ind) {
     default:
       return null;
   }
+}
+
+/// ANALYSIS_TRACK_FAILURE 지표에서 한국어 레이어명을 뽑는다(구 경로).
+///
+/// 백엔드가 `AnalysisResponse.failedTracks`를 노출하기 전에는 실패 트랙이 이
+/// 지표의 `"Analysis track unavailable: <TOKEN>"` 설명으로만 왔다. 지금은 전용
+/// 필드를 우선 쓰고([AnalysisResult.failedLayerLabels]) 이 경로는 폴백으로 남긴다.
+String? failedTrackLayerLabel(Indicator ind) {
+  if (ind.type != IndicatorType.analysisTrackFailure) return null;
+  const prefix = 'Analysis track unavailable:';
+  var token = ind.description.trim();
+  if (token.startsWith(prefix)) token = token.substring(prefix.length).trim();
+  return failedTrackLayerLabelOf(token);
 }
 
 /// 백엔드 RiskLevel(HIGH/MEDIUM/LOW) → 프론트 [RiskLevel](high/med/low) 매핑.
@@ -582,6 +594,10 @@ class AnalysisResult {
   final PhishingCategory? category;
   final String explanation;
   final String? failureCode;
+
+  /// 부분성공에서 수행하지 못한 분석 트랙(서버 원문 토큰, 예: `URL:VIRUSTOTAL`).
+  /// 사용자에게 그대로 보여주지 않고 [failedLayerLabels]로 환원해 쓴다.
+  final List<String> failedTracks;
   final ScoreBreakdown scoreBreakdown;
   final List<Indicator> indicators;
   final List<UrlThreat> urls;
@@ -596,6 +612,7 @@ class AnalysisResult {
     this.category,
     required this.explanation,
     this.failureCode,
+    this.failedTracks = const [],
     required this.scoreBreakdown,
     required this.indicators,
     required this.urls,
@@ -605,6 +622,24 @@ class AnalysisResult {
 
   /// 점수·등급을 신뢰할 수 있는 상태인지(완료/부분성공).
   bool get hasResult => status.hasResult;
+
+  /// 부분성공 배너에 쓸 **한국어 레이어명** 목록(중복 제거).
+  ///
+  /// 전용 필드 [failedTracks]를 우선 쓰고, 비어 있으면 예전처럼
+  /// ANALYSIS_TRACK_FAILURE 지표에서 뽑는다. 서버 배포 시차와, 접두사 문구가
+  /// 바뀌어 파싱이 조용히 깨지는 경우를 둘 다 넘기기 위한 이중 경로다.
+  List<String> get failedLayerLabels {
+    final labels = <String>{
+      for (final t in failedTracks)
+        if (failedTrackLayerLabelOf(t) case final l?) l,
+    };
+    if (labels.isEmpty) {
+      for (final i in indicators) {
+        if (failedTrackLayerLabel(i) case final l?) labels.add(l);
+      }
+    }
+    return labels.toList(growable: false);
+  }
 
   factory AnalysisResult.fromJson(Map<String, dynamic> j) {
     final breakdown = j['scoreBreakdown'];
@@ -617,6 +652,10 @@ class AnalysisResult {
       category: PhishingCategory.fromWire(j['category'] as String?),
       explanation: (j['explanation'] as String?) ?? '',
       failureCode: j['failureCode'] as String?,
+      failedTracks: switch (j['failedTracks']) {
+        final List l => l.whereType<String>().toList(growable: false),
+        _ => const <String>[],
+      },
       scoreBreakdown: breakdown is Map<String, dynamic>
           ? ScoreBreakdown.fromJson(breakdown)
           : const ScoreBreakdown(llmScore: 0, urlScore: 0, patternScore: 0),

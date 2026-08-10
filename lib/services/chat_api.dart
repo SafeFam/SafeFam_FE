@@ -8,8 +8,9 @@ import 'auth_api.dart';
 /// 대응 챗봇 API — 분석 결과 기반 멀티턴 상담.
 ///
 /// 백엔드 계약(SafeFam_BE #76 · `POST /api/v1/chat` · 보호된 API → Bearer):
-///  - 요청 `{ analysisId, messages:[{ role:"USER"|"ASSISTANT", content }] }`
+///  - 요청 `{ analysisId?, messages:[{ role:"USER"|"ASSISTANT", content }] }`
 ///    (messages 1~50개, content ≤2000자)
+///    ※ `analysisId`는 **선택**(SafeFam_BE #91). 없으면 분석 컨텍스트 없이 일반 상담.
 ///  - 응답 `data { message }` — 위험도·판단 근거는 서버가 analysisId로 **자동 주입**한다
 ///    (클라이언트는 대화 이력만 매 요청에 함께 보냄).
 ///  - 공통 응답 ApiResponse `{ status:"SUCCESS"|"ERROR", message, data }`.
@@ -44,10 +45,14 @@ class ChatApi {
   /// 대화 전체(사용자/도우미 번갈아)이며, 서버가 [analysisId]로 위험도·근거를
   /// 자동으로 실어 준다. 성공 시 도우미 답변 문자열, 실패 시 null.
   ///
+  /// [analysisId]는 **선택**이다(SafeFam_BE #91에서 `@NotNull` 제거, AI도 #49에서
+  /// `analysisContext` null 허용). 특정 분석과 무관한 일반 상담이면 null로 두며,
+  /// 그때는 아예 필드를 빼서 보낸다.
+  ///
   /// 서버 한도를 넘지 않도록 최근 [_maxMessages]개로 잘라 보내고, 한도를 넘는
   /// 내용은 애초에 보내지 않는다(400을 일반 실패로 흘리지 않기 위함).
   static Future<String?> send({
-    required int analysisId,
+    int? analysisId,
     required List<ChatMessage> history,
   }) async {
     if (history.isEmpty) return null;
@@ -63,7 +68,7 @@ class ChatApi {
           .post(Uri.parse('${AuthApi.baseUrl}/api/v1/chat'),
               headers: headers,
               body: jsonEncode({
-                'analysisId': analysisId,
+                if (analysisId != null) 'analysisId': analysisId,
                 'messages': trimmed.map((m) => m.toJson()).toList(),
               }))
           .timeout(_timeout));

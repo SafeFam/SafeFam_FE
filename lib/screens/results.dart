@@ -333,10 +333,7 @@ class _ResultScreenState extends State<ResultScreen> {
     final riskSignals = r.indicators
         .where((i) => i.type != IndicatorType.analysisTrackFailure)
         .toList(growable: false);
-    final failedLayers = <String>{
-      for (final i in r.indicators)
-        if (failedTrackLayerLabel(i) case final label?) label,
-    }.toList(growable: false);
+    final failedLayers = r.failedLayerLabels;
     return Scaffold(
       appBar: _resultBar(context, '분석 결과',
           result: r, onDelete: _isSaved && !_busy ? _confirmDelete : null),
