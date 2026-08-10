@@ -47,6 +47,9 @@ app.*.map.json
 # 로컬 전용 프로젝트 지침 (레포에 올리지 않음)
 CLAUDE.md
 
+# BE·AI 전달 문서 (파일로만 공유, 레포에 올리지 않음)
+docs/
+
 # Auto-generated platform files
 linux/flutter/generated_plugin_registrant.cc
 linux/flutter/generated_plugin_registrant.h
