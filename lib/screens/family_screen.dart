@@ -81,6 +81,21 @@ class _FamilyScreenState extends State<FamilyScreen> {
     if (mounted) _reload();
   }
 
+  /// 받은 초대 코드로 연결(피보호자). 가입 때 '나중에 하기'로 건너뛴 사람도
+  /// 여기서 연결할 수 있어야 한다. 가입 흐름과 달리 메인을 다시 쌓지 않는다.
+  Future<void> _enterCode() async {
+    final linked = await Navigator.push<bool>(
+        context,
+        MaterialPageRoute(
+            builder: (_) => const GuardianLinkScreen(fromSignup: false)));
+    if (!mounted) return;
+    if (linked == true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('가족과 연결됐어요')));
+    }
+    _reload();
+  }
+
   Future<void> _rename(_MemberVM vm) async {
     final changed = await Navigator.push<bool>(context,
         MaterialPageRoute(builder: (_) => ConnectNamingScreen(member: vm.member)));
@@ -173,6 +188,8 @@ class _FamilyScreenState extends State<FamilyScreen> {
     );
   }
 
+  /// 빈 상태에서 두 역할의 길을 모두 연다. 보호자는 코드를 만들고, 피보호자는
+  /// 받은 코드를 넣는다 — 코드 입력은 가입 때 건너뛰면 여기 말고 갈 곳이 없다.
   Widget _empty() => Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -180,12 +197,18 @@ class _FamilyScreenState extends State<FamilyScreen> {
           const SizedBox(height: 14),
           const Text('아직 연결된 가족이 없어요', style: AppText.titleScreen),
           const SizedBox(height: 6),
-          const Text('초대 코드를 만들어 가족의 폰에 입력하면\n위험 문자를 함께 지킬 수 있어요',
+          const Text('내가 가족을 지키려면 초대 코드를 만들고,\n가족이 나를 지켜준다면 받은 코드를 넣어요',
               textAlign: TextAlign.center, style: AppText.caption),
           const SizedBox(height: 18),
           SizedBox(
-            width: 200,
+            width: 220,
             child: SfButton('초대 코드 만들기', icon: Icons.person_add_alt, onTap: _invite),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: 220,
+            child: SfButton('받은 코드 입력',
+                icon: Icons.dialpad, variant: SfBtn.ghost, onTap: _enterCode),
           ),
         ],
       );
@@ -219,6 +242,10 @@ class _FamilyScreenState extends State<FamilyScreen> {
                       MaterialPageRoute(
                           builder: (_) => const FamilyAlertsScreen())),
                   icon: const Icon(Icons.notifications_none, color: AppColors.t1)),
+              IconButton(
+                  tooltip: '받은 코드 입력',
+                  onPressed: _enterCode,
+                  icon: const Icon(Icons.dialpad, color: AppColors.t1)),
               IconButton(
                   tooltip: '초대 코드 만들기',
                   onPressed: _invite,
