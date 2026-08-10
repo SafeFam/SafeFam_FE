@@ -6,7 +6,7 @@ import 'family_flow.dart';
 import 'mypage_screen.dart';
 import 'login_screen.dart';
 import 'whitelist_screen.dart';
-import 'history_screen.dart';
+import '../sheets.dart';
 import '../services/auth_api.dart';
 import '../services/app_settings.dart';
 
@@ -183,21 +183,11 @@ class _MoreScreenState extends State<MoreScreen> {
     );
   }
 
-  /// '대응 도우미'는 분석 결과 컨텍스트가 있어야 상담할 수 있다(서버가 analysisId로
-  /// 위험도·근거를 주입). 그래서 이력에서 분석을 고른 뒤 상세의 '대응 도우미'로 잇는다.
-  void _openHelpChat() {
-    _toast('상담할 분석을 선택하세요');
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => Scaffold(
-          backgroundColor: AppColors.bg,
-          appBar: AppBar(title: const Text('상담할 분석 선택')),
-          body: const HistoryScreen(),
-        ),
-      ),
-    );
-  }
+  /// '대응 도우미'를 분석 없이 바로 연다. 서버가 `analysisId`를 선택 항목으로
+  /// 바꿔(SafeFam_BE #91) 컨텍스트 없이도 일반 상담이 되므로, 예전처럼 이력에서
+  /// 분석을 고르게 하지 않는다. 특정 문자에 대한 상담은 그 결과 화면에서 열면
+  /// 위험도·근거가 함께 실린다.
+  void _openHelpChat() => showChatbotSheet(context);
 
   Future<void> _logout(BuildContext context) async {
     final ok = await showDialog<bool>(
