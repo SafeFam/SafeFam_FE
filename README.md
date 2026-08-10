@@ -20,10 +20,11 @@
 > 폰트: 기본 시스템 폰트로 동작. Pretendard는 `assets/fonts/`에 넣고 pubspec 주석 해제.
 
 ## 서버 연동
-- **baseUrl**: 기본값 `https://safefam.site` (EC2 배포 서버). 별도 주입 없이 `flutter run`만으로 실기기에서 바로 붙는다.
+- **baseUrl**: 기본값 `https://api.safefam.site` (EC2 배포 API). 별도 주입 없이 `flutter run`만으로 실기기에서 바로 붙는다.
   로컬 백엔드로 붙일 때만 빌드 시 주입: `flutter run --dart-define=SAFEFAM_API_BASE_URL=http://10.0.2.2:8080`
   (에뮬레이터의 `localhost`는 에뮬레이터 자신이라 호스트 PC는 `10.0.2.2`. 실기기면 같은 네트워크의 PC IP)
-  > 배포 서버는 **도메인으로만** 접근한다 — nginx가 443에서 받아 넘기고 인증서가 `safefam.site` 발급이라, IP를 직접 넣으면 붙지 않는다.
+  > ★**API는 `api.` 서브도메인**이다. 루트 `safefam.site`는 관리자 웹(SafeFam_Web, Vercel)이 쓰고 있어 API를 부르면 308로 `www.`에 리다이렉트되고 SPA 문서가 돌아온다. 앱·웹 모두 `api.safefam.site`를 쓴다.
+  > 도메인으로만 접근한다 — nginx가 443에서 받아 넘기고 인증서가 `api.safefam.site` 발급이라, IP를 직접 넣으면 붙지 않는다.
 - 인증 계약: 공통 응답 `ApiResponse{status,message,data}`, 토큰은 바디(`TokenResponse`). 인증이 필요한(보호된) API 요청에만 `Authorization: Bearer <accessToken>`을 붙임 — 가입·로그인처럼 토큰 없는 요청엔 미적용.
 - 문자 분석(**비동기**): `POST /api/v1/analyses`(접수 → **202 `{analysisId, status}`**, 완성 결과 아님)·`GET`(이력, page·필터)·`GET /{id}`(상세, **종료 상태까지 폴링**)·`DELETE /{id}`·`POST /{id}/feedback`. `status`=`PENDING·PROCESSING·COMPLETED·PARTIAL_SUCCESS·FAILED`. 응답 `AnalysisResponse{status, riskScore?, riskLevel?(HIGH/MEDIUM/LOW), category?, failureCode?, scoreBreakdown{llmScore,urlScore,patternScore}, indicators, urls, recommendedActions, analyzedAt?}` — **처리 전·실패엔 점수·등급이 null**(완료/부분 성공에서만 신뢰). 통계는 `GET /api/v1/statistics/overview?period=`. (전부 보호된 API)
   - **마스킹은 서버 담당**(#80): 프론트 클라이언트 마스킹(`util/masking.dart`)은 제거됨 — `content`를 그대로 보내고 서버가 개인정보를 마스킹한다. 단 결과 공유(카톡·문자) 직전에는 유출 방어용 마스킹(`analysis_api.dart` `_redactPii`)을 한 번 더 적용.
