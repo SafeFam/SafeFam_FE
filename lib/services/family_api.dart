@@ -19,17 +19,25 @@ import 'auth_api.dart' show AuthApi;
 ///   - POST /link/qr     (피보호자) { qrToken(≤64) } → 200   ※ QR은 후속 이슈
 ///   - DELETE /{linkId}  (양측)                        → 204 (ApiResponse 래핑 없음)
 ///   - GET  /members     (보호자)                      → List<FamilyMemberResponse>
-///        { linkId, wardId, wardPhone, status(PENDING|ACTIVE|REVOKED), linkedAt }
+///        { linkId, wardId, wardNickname, wardPhone, relationship,
+///          status(PENDING|ACTIVE|REVOKED), linkedAt }
 ///        ※ ACTIVE만 내려오며 wardPhone은 마스킹 없이 옴.
+///        ※ `wardNickname`은 **현재 항상 null**이다(SafeFam_BE #93 기준). 매핑 원본인
+///          `User.nickname`이 V1 레거시 컬럼이고 V2에서 `name`으로 이관돼, 지금 가입
+///          경로는 `name`만 채운다. → 표시 이름은 `relationship`을 우선 쓴다.
+///   - PATCH /{linkId}   (보호자) { relationship } → 200 (SafeFam_BE #92·#93)
+///        관계(별명) 저장. 최대 20자, null이면 해제. 남의 링크면 403.
 ///
 ///  에러: 응답 바디에 에러코드는 없고 message만 있다(AuthApi와 동일 관례).
 ///   FA001 404(잘못된 코드)·FA002 422(만료)·FA003 404(링크 없음)·
 ///   FA004 403(권한 없음)·FA005 422(자기 연결). → status + 서버 message로 안내.
 ///
-///  ※ 가족 연결에 별명(이름) 필드는 백엔드에 없다. 별명은 기기 로컬(AppPrefs)에만
-///    저장한다. 피보호자가 '내 보호자'를 조회하는 엔드포인트도 없다.
+///  ※ 피보호자가 '내 보호자'를 조회하는 엔드포인트는 없다.
 class FamilyApi {
   static const Duration _timeout = Duration(seconds: 10);
+
+  /// 서버 `@Size(max = 20)`와 맞춘 관계 문자열 최대 길이.
+  static const int relationshipMaxLength = 20;
 
   static Uri _uri(String path) => Uri.parse('${AuthApi.baseUrl}$path');
 
@@ -146,6 +154,29 @@ class FamilyApi {
     }
   }
 
+  /// 피보호자와의 관계(별명) 저장(보호자 전용). 빈 값을 넘기면 관계를 지운다.
+  ///
+  /// 서버가 20자까지만 받으므로 넘기기 전에 잘라 보낸다(초과분은 400이 아니라
+  /// 조용히 잘린 값이 저장되는 편이 사용자에겐 덜 당황스럽다).
+  static Future<bool> updateRelationship(int linkId, String? relationship) async {
+    final v = relationship?.trim();
+    final body = jsonEncode({
+      'relationship': (v == null || v.isEmpty)
+          ? null
+          : (v.length > relationshipMaxLength
+              ? v.substring(0, relationshipMaxLength)
+              : v),
+    });
+    try {
+      final res = await AuthApi.sendAuthorized((headers) => http
+          .patch(_uri('/api/v1/family/$linkId'), headers: headers, body: body)
+          .timeout(_timeout));
+      return _isSuccess(res);
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// 연결 해제. 성공(204) 여부.
   static Future<bool> revoke(int linkId) async {
     try {
@@ -205,7 +236,14 @@ class FamilyInvite {
 class FamilyMember {
   final int linkId;
   final int? wardId;
+
+  /// 피보호자 본인이 등록한 닉네임. 서버가 아직 채우지 않아 실무상 항상 null이다
+  /// (위 계약 주석 참고). 채워지기 시작하면 [displayName]이 자동으로 활용한다.
+  final String? wardNickname;
   final String? wardPhone;
+
+  /// 보호자가 설정한 관계('어머니' 등). 미설정이면 null.
+  final String? relationship;
   final FamilyLinkStatus status;
   final DateTime? linkedAt;
 
@@ -213,14 +251,27 @@ class FamilyMember {
     required this.linkId,
     required this.status,
     this.wardId,
+    this.wardNickname,
     this.wardPhone,
+    this.relationship,
     this.linkedAt,
   });
+
+  /// 목록·알림에서 쓸 표시 이름. 보호자가 정한 관계를 가장 먼저 쓰고,
+  /// 없으면 피보호자 닉네임 → 전화번호 순으로 내려간다. 셋 다 없으면 null.
+  String? get displayName {
+    for (final v in [relationship, wardNickname, wardPhone]) {
+      if (v != null && v.trim().isNotEmpty) return v.trim();
+    }
+    return null;
+  }
 
   factory FamilyMember.fromJson(Map<String, dynamic> json) => FamilyMember(
         linkId: (json['linkId'] as num?)?.toInt() ?? 0,
         wardId: (json['wardId'] as num?)?.toInt(),
+        wardNickname: json['wardNickname'] as String?,
         wardPhone: json['wardPhone'] as String?,
+        relationship: json['relationship'] as String?,
         status: FamilyLinkStatus.fromWire(json['status'] as String?),
         linkedAt: DateTime.tryParse('${json['linkedAt']}')?.toLocal(),
       );

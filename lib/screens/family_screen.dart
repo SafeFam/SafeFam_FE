@@ -13,14 +13,16 @@ class FamilyScreen extends StatefulWidget {
   State<FamilyScreen> createState() => _FamilyScreenState();
 }
 
-/// 가족 한 명 + 로컬 별명(백엔드에 이름 필드가 없어 기기 로컬에서 붙인다).
+/// 가족 한 명. 표시 이름은 서버가 보관하는 관계(relationship)를 쓴다.
 class _MemberVM {
   final FamilyMember member;
-  final String? nickname;
-  const _MemberVM(this.member, this.nickname);
+  const _MemberVM(this.member);
 
-  /// 표시 이름: 별명이 있으면 별명, 없으면 전화번호.
-  String get title => nickname ?? member.wardPhone ?? '가족';
+  /// 관계 → 피보호자 닉네임 → 전화번호 순. 셋 다 없으면 '가족'.
+  String get title => member.displayName ?? '가족';
+
+  /// 이름을 아직 정하지 않은 상태(관계 미설정)인지.
+  bool get unnamed => (member.relationship?.trim().isEmpty ?? true);
 }
 
 class _FamilyScreenState extends State<FamilyScreen> {
@@ -41,16 +43,36 @@ class _FamilyScreenState extends State<FamilyScreen> {
   }
 
   Future<List<_MemberVM>> _load() async {
-    final members = await FamilyApi.getMembers();
+    var members = await FamilyApi.getMembers();
     // null은 조회 실패(네트워크 등) → 에러 상태로. 빈 목록은 정상(연결 없음).
     if (members == null) {
       throw Exception('가족 목록을 불러오지 못했어요');
     }
-    final vms = <_MemberVM>[];
-    for (final m in members) {
-      vms.add(_MemberVM(m, await AppPrefs.familyName(m.linkId)));
+    if (await _migrateLocalNames(members)) {
+      // 올린 관계가 반영된 목록으로 다시 읽는다. 재조회가 실패하면 방금 읽은
+      // 목록을 그대로 쓴다(이름만 다음 새로고침까지 예전 상태로 보임).
+      members = await FamilyApi.getMembers() ?? members;
     }
-    return vms;
+    return members.map(_MemberVM.new).toList();
+  }
+
+  /// 서버 저장 전(로컬 별명 시절)에 지어둔 이름을 한 번만 서버로 올린다.
+  /// 서버에 관계가 이미 있으면 서버 값이 원본이므로 건드리지 않고 로컬만 지운다.
+  /// 하나라도 올렸으면 true(목록 재조회 필요).
+  Future<bool> _migrateLocalNames(List<FamilyMember> members) async {
+    var uploaded = false;
+    for (final m in members) {
+      final local = await AppPrefs.familyName(m.linkId);
+      if (local == null || local.trim().isEmpty) continue;
+      final hasServerName = (m.relationship?.trim().isNotEmpty ?? false);
+      if (!hasServerName) {
+        // 실패하면 로컬 값을 남겨 다음 새로고침에서 다시 시도한다.
+        if (!await FamilyApi.updateRelationship(m.linkId, local)) continue;
+        uploaded = true;
+      }
+      await AppPrefs.removeFamilyName(m.linkId);
+    }
+    return uploaded;
   }
 
   Future<void> _invite() async {
@@ -105,8 +127,8 @@ class _FamilyScreenState extends State<FamilyScreen> {
 
   Widget _memberRow(_MemberVM vm) {
     final canViewLogs = vm.member.wardId != null;
-    // 별명이 있으면 보조줄에 번호를, 없으면 '보호 중'을 쓴다.
-    final sub = vm.nickname == null ? '보호 중' : (vm.member.wardPhone ?? '보호 중');
+    // 이름을 정했으면 보조줄에 번호를, 아직이면 설정을 유도하는 문구를 쓴다.
+    final sub = vm.unnamed ? '이름 설정 안 함' : (vm.member.wardPhone ?? '보호 중');
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: SfCard(

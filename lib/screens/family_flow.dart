@@ -271,8 +271,8 @@ class _InviteCodeScreenState extends State<InviteCodeScreen> {
   }
 }
 
-/// 연결된 가족의 별명(관계) 설정. 백엔드에 이름 필드가 없어 기기 로컬에 저장한다.
-/// 저장하면 true를 반환하며 pop 한다(가족 목록이 새로고침되도록).
+/// 연결된 가족의 관계(표시 이름) 설정. 서버에 저장해(PATCH /family/{linkId})
+/// 기기를 바꿔도 유지된다. 저장하면 true를 반환하며 pop 한다(목록 새로고침용).
 class ConnectNamingScreen extends StatefulWidget {
   final FamilyMember member;
   const ConnectNamingScreen({super.key, required this.member});
@@ -282,31 +282,99 @@ class ConnectNamingScreen extends StatefulWidget {
 
 class _ConnectNamingScreenState extends State<ConnectNamingScreen> {
   static const _rel = ['어머니', '아버지', '할머니', '할아버지', '기타'];
+
+  late final TextEditingController _name;
   int _sel = 0;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // 이미 설정된 관계가 있으면(수정 진입) 그 값으로 시작한다. 목록에 있는
+    // 관계면 해당 칩을, 직접 입력한 이름이면 '기타'를 고른 상태로 복원한다.
+    final current = widget.member.relationship?.trim() ?? '';
+    final i = _rel.indexOf(current);
+    if (current.isEmpty) {
+      _sel = 0;
+    } else {
+      _sel = i >= 0 ? i : _rel.length - 1;
+    }
+    _name = TextEditingController(text: current.isEmpty ? _rel[_sel] : current);
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  /// 칩을 고르면 표시 이름도 함께 바꾼다. 단 '기타'는 직접 입력용이라
+  /// 칩 이름('기타')을 그대로 넣지 않고 비워 사용자가 쓰게 둔다.
+  void _pick(int i) {
+    setState(() {
+      _sel = i;
+      _name.text = i == _rel.length - 1 ? '' : _rel[i];
+      _name.selection =
+          TextSelection.collapsed(offset: _name.text.characters.length);
+    });
+  }
 
   Future<void> _save() async {
-    await AppPrefs.setFamilyName(widget.member.linkId, _rel[_sel]);
+    final name = _name.text.trim();
+    final hadName = (widget.member.relationship?.trim().isNotEmpty ?? false);
+    // 처음 정하는 자리에서 빈 값은 실수로 보고 막는다. 반대로 이미 정해둔 이름을
+    // 비우는 건 '이름 지우기'라는 뜻이므로 null로 보내 서버에서 해제한다.
+    if (name.isEmpty && !hadName) {
+      _snack('어떻게 부를지 입력해 주세요.');
+      return;
+    }
+    setState(() => _saving = true);
+    final ok = await FamilyApi.updateRelationship(
+        widget.member.linkId, name.isEmpty ? null : name);
+    if (!mounted) return;
+    if (!ok) {
+      setState(() => _saving = false);
+      _snack('이름을 저장하지 못했어요. 잠시 후 다시 시도해 주세요.');
+      return;
+    }
+    // 서버가 원본이 됐으므로, 예전에 이 기기에만 남아 있던 별명은 정리한다.
+    await AppPrefs.removeFamilyName(widget.member.linkId);
     if (!mounted) return;
     Navigator.pop(context, true);
+  }
+
+  void _snack(String msg) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(msg)));
   }
 
   @override
   Widget build(BuildContext context) {
     final phone = widget.member.wardPhone ?? '번호 없음';
+    // 연결 직후 진입인지, 목록에서 이름을 고치러 온 것인지에 따라 문구를 바꾼다.
+    final isEdit = (widget.member.relationship?.trim().isNotEmpty ?? false);
     return Scaffold(
       appBar: _bar(context, '이름 설정'),
       body: SafeArea(
-        child: Padding(
+        // 표시 이름이 입력 가능해져 키보드가 올라온다. 고정 높이 Column이면
+        // 키보드가 하단을 밀어 오버플로가 나므로 스크롤 뷰로 감싼다.
+        child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Center(
-                  child: Icon(Icons.check_circle, color: AppColors.low, size: 56)),
-              const SizedBox(height: 12),
-              const Center(child: Text('연결됐어요!', style: AppText.titleResult)),
-              const SizedBox(height: 6),
-              const Center(child: Text('이분을 뭐라고 부를까요?', style: AppText.caption)),
+              if (!isEdit) ...[
+                const Center(
+                    child:
+                        Icon(Icons.check_circle, color: AppColors.low, size: 56)),
+                const SizedBox(height: 12),
+                const Center(child: Text('연결됐어요!', style: AppText.titleResult)),
+                const SizedBox(height: 6),
+              ],
+              Center(
+                  child: Text(isEdit ? '뭐라고 부를까요?' : '이분을 뭐라고 부를까요?',
+                      style: AppText.caption)),
               const SizedBox(height: 14),
               SfCard(
                 kind: CardKind.tint,
@@ -325,26 +393,43 @@ class _ConnectNamingScreenState extends State<ConnectNamingScreen> {
                 children: [
                   for (var i = 0; i < _rel.length; i++)
                     GestureDetector(
-                      onTap: () => setState(() => _sel = i),
+                      onTap: () => _pick(i),
                       child: SfChip(_rel[i], selected: _sel == i),
                     ),
                 ],
               ),
               const SizedBox(height: 18),
               const SectionLabel('표시 이름'),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
-                decoration: BoxDecoration(
-                    border: Border.all(color: AppColors.line, width: 1.5),
-                    borderRadius: BorderRadius.circular(13)),
-                child: Text(_rel[_sel], style: const TextStyle(fontSize: 17)),
+              TextField(
+                controller: _name,
+                maxLength: FamilyApi.relationshipMaxLength,
+                style: const TextStyle(fontSize: 17),
+                textInputAction: TextInputAction.done,
+                onSubmitted: (_) => _saving ? null : _save(),
+                decoration: InputDecoration(
+                  hintText: '예: 어머니',
+                  counterText: '',
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+                  enabledBorder: OutlineInputBorder(
+                      borderSide:
+                          const BorderSide(color: AppColors.line, width: 1.5),
+                      borderRadius: BorderRadius.circular(13)),
+                  focusedBorder: OutlineInputBorder(
+                      borderSide:
+                          const BorderSide(color: AppColors.blue, width: 1.5),
+                      borderRadius: BorderRadius.circular(13)),
+                ),
               ),
               const SizedBox(height: 8),
-              const Text('관계를 고르면 그대로 표시돼요. 내 폰에만 저장돼요.',
-                  style: TextStyle(fontSize: 13, color: AppColors.t3)),
-              const Spacer(),
-              SfButton('저장하기', onTap: _save),
+              Text(
+                  isEdit
+                      ? '가족 목록에 이 이름으로 표시돼요. 비우고 저장하면 이름을 지워요.'
+                      : '가족 목록에 이 이름으로 표시돼요. 직접 고쳐도 돼요.',
+                  style: const TextStyle(fontSize: 13, color: AppColors.t3)),
+              const SizedBox(height: 24),
+              SfButton(_saving ? '저장 중…' : '저장하기',
+                  onTap: _saving ? null : _save),
             ],
           ),
         ),

@@ -28,7 +28,7 @@
   - **마스킹은 서버 담당**(#80): 프론트 클라이언트 마스킹(`util/masking.dart`)은 제거됨 — `content`를 그대로 보내고 서버가 개인정보를 마스킹한다. 단 결과 공유(카톡·문자) 직전에는 유출 방어용 마스킹(`analysis_api.dart` `_redactPii`)을 한 번 더 적용.
   - **레이트리밋**: `POST /analyses`는 유저 기준 분당 제한이 있어 초과 시 429가 오며, 프론트는 일반 실패와 구분해 서버 안내 문구를 노출.
   - **신고**: `POST /api/v1/analyses/{id}/report {type:PHISHING|SPAM|OTHER}` — 저장된 분석을 익명 접수(원문·발신번호·userId 제외, 최초 201·재신고 200 멱등). 결과 화면 → 대응 도우미 → 신고.
-- 가족 보호: `POST /api/v1/family/invite`(초대코드/QR 토큰 발급)·`POST /link/code`(코드로 연결)·`POST /link/qr`(QR로 연결)·`GET /members`·`DELETE /{linkId}`. 별명은 백엔드에 필드가 없어 기기 로컬(AppPrefs)에 저장. QR은 보호자 화면이 `qrToken`을 QR로 표시(`qr_flutter`)하고 피보호자가 스캔(`mobile_scanner`)해 연결 — 실기기 카메라 검증은 후속. (전부 보호된 API)
+- 가족 보호: `POST /api/v1/family/invite`(초대코드/QR 토큰 발급)·`POST /link/code`(코드로 연결)·`POST /link/qr`(QR로 연결)·`GET /members`·`PATCH /{linkId}`(관계 설정)·`DELETE /{linkId}`. **표시 이름(관계)은 서버에 저장**(`relationship`, 최대 20자) — 기기를 바꿔도 유지된다. 예전 기기 로컬(AppPrefs) 별명은 목록을 처음 열 때 서버로 한 번 올리고 로컬에서 지운다. 표시 우선순위는 `relationship` → `wardNickname` → 전화번호(※ `wardNickname`은 서버가 아직 채우지 않아 현재 항상 null). QR은 보호자 화면이 `qrToken`을 QR로 표시(`qr_flutter`)하고 피보호자가 스캔(`mobile_scanner`)해 연결 — 실기기 카메라 검증은 후속. (전부 보호된 API)
 - 신뢰 발신자(화이트리스트): `POST /api/v1/whitelists`·`GET`·`DELETE /{id}`. 등록한 발신자는 자동 탐지 시 분석 프리패스. 더보기 > 탐지·알림에서 관리. (프리패스 확인 `/check`는 자동 탐지 흐름 담당)
 - FCM 기기: 로그인/자동로그인 시 `POST /api/v1/devices`로 등록(응답 `deviceId` 보관), **로그아웃 시 `DELETE /api/v1/devices/{deviceId}`로 해제**해 이전 계정 푸시를 끊음. 알림 수신·표시 로직은 타 멤버 담당.
 - 인증 만료 대응: 보호된 요청이 401이면 `refreshToken`으로 **자동 재발급 후 1회 재시도**(single-flight, 회전 토큰). 재발급까지 실패하면 세션을 폐기하고 로그인 화면으로 되돌림.
@@ -57,7 +57,7 @@ lib/
     results.dart       결과(3중 스코어 게이지)·보이스피싱·URL + AnalysisDetailScreen(이력 상세·삭제·피드백)
     overlay_alert.dart 강제 오버레이 경고
     history_screen.dart 이력(목록·통계·유형 필터·상세 이동)
-    family_screen.dart 가족 목록(getMembers·연결 해제·별명) / more_screen.dart(설정)
+    family_screen.dart 가족 목록(getMembers·연결 해제·관계 설정) / more_screen.dart(설정)
   services/
     auth_api.dart      인증 API — 가입·로그인·로그아웃·잠금해제 + 마이페이지 users/me·설정 users/me/settings (401 자동 재발급)
     analysis_api.dart  문자 분석 API — 분석·이력·상세·삭제·피드백·통계·신고(analyses·statistics)
