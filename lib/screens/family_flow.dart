@@ -439,8 +439,13 @@ class _ConnectNamingScreenState extends State<ConnectNamingScreen> {
 }
 
 /// 피보호자: 초대 코드 입력으로 연결.
+///
+/// 가입 흐름에서는 연결에 성공하면 메인으로 진입한다. 이미 메인을 쓰고 있는
+/// 사용자가 가족 탭·더보기에서 들어온 경우엔([fromSignup]=false) 메인을 다시
+/// 쌓지 않고 \`true\`를 반환하며 pop 해, 호출한 화면이 목록을 새로고침한다.
 class GuardianLinkScreen extends StatefulWidget {
-  const GuardianLinkScreen({super.key});
+  final bool fromSignup;
+  const GuardianLinkScreen({super.key, this.fromSignup = true});
   @override
   State<GuardianLinkScreen> createState() => _GuardianLinkScreenState();
 }
@@ -456,6 +461,15 @@ class _GuardianLinkScreenState extends State<GuardianLinkScreen> {
     super.dispose();
   }
 
+  /// 연결 성공 후 이동. 진입 경로에 따라 메인 진입 또는 pop.
+  void _onLinked() {
+    if (widget.fromSignup) {
+      _toMain(context);
+    } else {
+      Navigator.pop(context, true);
+    }
+  }
+
   Future<void> _submit() async {
     final code = _controller.text.trim();
     if (!RegExp(r'^\d{6}$').hasMatch(code)) {
@@ -469,7 +483,7 @@ class _GuardianLinkScreenState extends State<GuardianLinkScreen> {
     final result = await FamilyApi.linkByCode(code);
     if (!mounted) return;
     if (result.success) {
-      _toMain(context);
+      _onLinked();
     } else {
       setState(() {
         _loading = false;
@@ -490,7 +504,7 @@ class _GuardianLinkScreenState extends State<GuardianLinkScreen> {
     final result = await FamilyApi.linkByQr(token);
     if (!mounted) return;
     if (result.success) {
-      _toMain(context);
+      _onLinked();
     } else {
       setState(() {
         _loading = false;

@@ -271,9 +271,19 @@ class _MoreScreenState extends State<MoreScreen> {
           const SectionLabel('가족'),
           SfCard(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: _link(Icons.person_add_alt, '가족 추가·초대 코드',
-                onTap: () => Navigator.push(
-                    context, MaterialPageRoute(builder: (_) => const InviteCodeScreen()))),
+            child: Column(children: [
+              _link(Icons.person_add_alt, '가족 추가·초대 코드',
+                  onTap: () => Navigator.push(context,
+                      MaterialPageRoute(builder: (_) => const InviteCodeScreen()))),
+              const Divider(height: 1, color: AppColors.line),
+              // 가입 때 '나중에 하기'로 건너뛴 피보호자가 연결할 수 있는 경로.
+              _link(Icons.dialpad, '받은 초대 코드 입력',
+                  onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) =>
+                              const GuardianLinkScreen(fromSignup: false)))),
+            ]),
           ),
           const SizedBox(height: 16),
           const SectionLabel('계정'),
