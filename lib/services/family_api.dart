@@ -22,10 +22,8 @@ import 'auth_api.dart' show AuthApi;
 ///        { linkId, wardId, wardName, wardPhone, relationship,
 ///          status(PENDING|ACTIVE|REVOKED), linkedAt }
 ///        ※ ACTIVE만 내려오며 wardPhone은 마스킹 없이 옴.
-///        ※ 이 필드는 SafeFam_BE #97에서 `wardNickname`→`wardName`으로 바뀌었다.
-///          예전 이름은 `User.nickname`(V1 레거시 컬럼)을 읽어 **항상 null**이었는데,
-///          이제 `User.name`을 읽어 **가입 때 받은 실명이 실제로 채워진다**.
-///          (레거시 컬럼은 BE 마이그레이션 V20에서 삭제됨.)
+///        ※ `wardName`은 피보호자의 `User.name`(가입 때 받은 이름). 미설정이면 null.
+///          (SafeFam_BE #97에서 옛 이름 `wardNickname`을 대체했다.)
 ///   - PATCH /{linkId}   (보호자) { relationship } → 200 (SafeFam_BE #92·#93)
 ///        관계(별명) 저장. 최대 20자, null이면 해제. 남의 링크면 403.
 ///
