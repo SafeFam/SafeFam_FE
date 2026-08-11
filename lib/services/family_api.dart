@@ -19,12 +19,11 @@ import 'auth_api.dart' show AuthApi;
 ///   - POST /link/qr     (피보호자) { qrToken(≤64) } → 200   ※ QR은 후속 이슈
 ///   - DELETE /{linkId}  (양측)                        → 204 (ApiResponse 래핑 없음)
 ///   - GET  /members     (보호자)                      → List<FamilyMemberResponse>
-///        { linkId, wardId, wardNickname, wardPhone, relationship,
+///        { linkId, wardId, wardName, wardPhone, relationship,
 ///          status(PENDING|ACTIVE|REVOKED), linkedAt }
 ///        ※ ACTIVE만 내려오며 wardPhone은 마스킹 없이 옴.
-///        ※ `wardNickname`은 **현재 항상 null**이다(SafeFam_BE #93 기준). 매핑 원본인
-///          `User.nickname`이 V1 레거시 컬럼이고 V2에서 `name`으로 이관돼, 지금 가입
-///          경로는 `name`만 채운다. → 표시 이름은 `relationship`을 우선 쓴다.
+///        ※ `wardName`은 피보호자의 `User.name`(가입 때 받은 이름). 미설정이면 null.
+///          (SafeFam_BE #97에서 옛 이름 `wardNickname`을 대체했다.)
 ///   - PATCH /{linkId}   (보호자) { relationship } → 200 (SafeFam_BE #92·#93)
 ///        관계(별명) 저장. 최대 20자, null이면 해제. 남의 링크면 403.
 ///
@@ -237,9 +236,9 @@ class FamilyMember {
   final int linkId;
   final int? wardId;
 
-  /// 피보호자 본인이 등록한 닉네임. 서버가 아직 채우지 않아 실무상 항상 null이다
-  /// (위 계약 주석 참고). 채워지기 시작하면 [displayName]이 자동으로 활용한다.
-  final String? wardNickname;
+  /// 피보호자가 가입 때 등록한 이름(서버 `User.name`).
+  /// 보호자가 관계를 따로 정하지 않았을 때 [displayName]이 이걸 쓴다.
+  final String? wardName;
   final String? wardPhone;
 
   /// 보호자가 설정한 관계('어머니' 등). 미설정이면 null.
@@ -251,16 +250,16 @@ class FamilyMember {
     required this.linkId,
     required this.status,
     this.wardId,
-    this.wardNickname,
+    this.wardName,
     this.wardPhone,
     this.relationship,
     this.linkedAt,
   });
 
   /// 목록·알림에서 쓸 표시 이름. 보호자가 정한 관계를 가장 먼저 쓰고,
-  /// 없으면 피보호자 닉네임 → 전화번호 순으로 내려간다. 셋 다 없으면 null.
+  /// 없으면 피보호자 이름 → 전화번호 순으로 내려간다. 셋 다 없으면 null.
   String? get displayName {
-    for (final v in [relationship, wardNickname, wardPhone]) {
+    for (final v in [relationship, wardName, wardPhone]) {
       if (v != null && v.trim().isNotEmpty) return v.trim();
     }
     return null;
@@ -269,7 +268,7 @@ class FamilyMember {
   factory FamilyMember.fromJson(Map<String, dynamic> json) => FamilyMember(
         linkId: (json['linkId'] as num?)?.toInt() ?? 0,
         wardId: (json['wardId'] as num?)?.toInt(),
-        wardNickname: json['wardNickname'] as String?,
+        wardName: json['wardName'] as String?,
         wardPhone: json['wardPhone'] as String?,
         relationship: json['relationship'] as String?,
         status: FamilyLinkStatus.fromWire(json['status'] as String?),
