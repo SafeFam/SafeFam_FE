@@ -33,13 +33,17 @@ import 'auth_api.dart' show AuthApi;
 ///                     값은 영어·내부 엔진명(`URL:VIRUSTOTAL`)이라 그대로 노출 금지.
 ///                     ※ BE 매퍼가 ANALYSIS_TRACK_FAILURE 지표 문자열을 파싱해 만드는
 ///                       구조라, 필드가 비면 지표에서 뽑는 폴백을 유지한다.
-///   scoreBreakdown{ llmScore, urlScore, patternScore },
+///   scoreBreakdown{ textScore, urlScore, rulesScore },  ← 셋 다 nullable
+///                   ※ SafeFam_BE #101(2026-08-14)에서 이름·의미가 함께 바뀌었다.
+///                     llmScore→textScore · patternScore→rulesScore,
+///                     값은 가중 기여도(weightedContributions)→원점수(rawScores).
+///   evidenceCards[{category,title,description}]  ← 같은 PR에서 추가(최대 5개). 아직 미사용.
 ///   indicators[{type,description}], urls[{originalUrl,resolvedUrl,suspicious}],
 ///   recommendedActions[{type,label,phoneNumber?,url?}], analyzedAt }
 ///   ※ 종료 전(PENDING/PROCESSING)·실패(FAILED)에는 riskScore·riskLevel·category·
 ///     analyzedAt·scoreBreakdown 값이 **null**. 완료(COMPLETED)/부분성공(PARTIAL_SUCCESS)
 ///     에서만 점수·등급을 신뢰. FAILED는 '안전'이 아니라 별도 실패 안내가 필요.
-///   ※ scoreBreakdown은 3중 스코어 게이지(§4)와 대응. 현재 규칙 기반이라 llmScore=0.
+///   ※ scoreBreakdown은 3중 스코어 게이지(§4)와 대응. 각 계층 원점수 0~100.
 ///
 ///  통계 /api/v1/statistics/overview?period=LAST_7_DAYS|LAST_30_DAYS|LAST_90_DAYS|ALL
 ///   → { period, totalAnalysisCount, highRiskCount,
@@ -510,21 +514,29 @@ List<T> _parseList<T>(
   return raw.whereType<Map<String, dynamic>>().map(f).toList(growable: false);
 }
 
-/// 탐지 계층별 점수(3중 스코어 게이지 breakdown용). 규칙 기반 현재 llm=0.
+/// 탐지 계층별 **원점수**(3중 스코어 게이지 breakdown용). 각 0~100.
+///
+/// 필드명·의미 모두 SafeFam_BE #101에서 바뀌었다.
+/// `llmScore`→[textScore], `patternScore`→[rulesScore], 값은 가중 기여도→원점수.
+/// (게이지는 원래부터 0~100 기준이라 표시 쪽은 손댈 게 없다.)
+///
+/// ★셋 다 **nullable**이다. 0은 '실제로 0점'(예: 링크가 없어 URL 점수 0)이고,
+/// null은 '서버가 안 줬다'로 뜻이 다르다. 예전엔 없는 키를 `?? 0`으로 삼켜서,
+/// 필드명이 바뀐 뒤에도 에러 없이 막대만 0으로 붙어 있었다.
 class ScoreBreakdown {
-  final int llmScore; // 문맥 분석(LLM) 50%
-  final int urlScore; // 링크 보안(VirusTotal) 30%
-  final int patternScore; // 글자 패턴(규칙) 20%
+  final int? textScore; // 문자 문맥 분석(LLM)
+  final int? urlScore; // 링크 보안(VirusTotal)
+  final int? rulesScore; // 금융 규칙(나이브베이즈·명칭 DB)
   const ScoreBreakdown({
-    required this.llmScore,
+    required this.textScore,
     required this.urlScore,
-    required this.patternScore,
+    required this.rulesScore,
   });
 
   factory ScoreBreakdown.fromJson(Map<String, dynamic> j) => ScoreBreakdown(
-        llmScore: (j['llmScore'] as num?)?.toInt() ?? 0,
-        urlScore: (j['urlScore'] as num?)?.toInt() ?? 0,
-        patternScore: (j['patternScore'] as num?)?.toInt() ?? 0,
+        textScore: (j['textScore'] as num?)?.toInt(),
+        urlScore: (j['urlScore'] as num?)?.toInt(),
+        rulesScore: (j['rulesScore'] as num?)?.toInt(),
       );
 }
 
@@ -658,7 +670,9 @@ class AnalysisResult {
       },
       scoreBreakdown: breakdown is Map<String, dynamic>
           ? ScoreBreakdown.fromJson(breakdown)
-          : const ScoreBreakdown(llmScore: 0, urlScore: 0, patternScore: 0),
+          // 분석이 끝나기 전엔 통째로 없다. 0점이 아니라 '아직 모른다'가 맞다.
+          : const ScoreBreakdown(
+              textScore: null, urlScore: null, rulesScore: null),
       indicators: _parseList(j, 'indicators', Indicator.fromJson),
       urls: _parseList(j, 'urls', UrlThreat.fromJson),
       recommendedActions:

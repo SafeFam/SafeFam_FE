@@ -226,7 +226,7 @@ final AnalysisResult _demoResult = AnalysisResult(
   category: PhishingCategory.governmentAgency,
   explanation: '기관을 사칭해 겁을 주고, 안전계좌로 송금을 유도하는 수법이에요. 절대 응하지 마세요.',
   scoreBreakdown:
-      const ScoreBreakdown(llmScore: 0, urlScore: 100, patternScore: 85),
+      const ScoreBreakdown(textScore: 92, urlScore: 100, rulesScore: 85),
   indicators: const [
     Indicator(type: IndicatorType.impersonation, description: '"검찰·수사관" 등 기관을 사칭'),
     Indicator(type: IndicatorType.financialAction, description: '"안전계좌로 이체" 표현 감지'),
@@ -392,9 +392,9 @@ class _ResultScreenState extends State<ResultScreen> {
                 ),
                 if (_open) ...[
                   const SizedBox(height: 14),
-                  BreakdownBar('문맥 분석 (AI)', r.scoreBreakdown.llmScore),
+                  BreakdownBar('문맥 분석 (AI)', r.scoreBreakdown.textScore),
                   BreakdownBar('링크 보안', r.scoreBreakdown.urlScore),
-                  BreakdownBar('글자 패턴', r.scoreBreakdown.patternScore),
+                  BreakdownBar('글자 패턴', r.scoreBreakdown.rulesScore),
                   const Divider(color: AppColors.line, height: 12),
                   const Text('세 가지 분석을 합쳐 종합 위험 점수를 계산했어요.',
                       style: TextStyle(
