@@ -64,11 +64,16 @@ class _GaugePainter extends CustomPainter {
 /// 기여도 breakdown 한 줄.
 class BreakdownBar extends StatelessWidget {
   final String label;
-  final int value; // 0~100
+
+  /// 해당 계층의 원점수 0~100. **null이면 서버가 값을 안 준 것**이라
+  /// 0점(안전)과 구분해 '—'로 비워 둔다. 못 돌린 분석을 0점으로 그리면
+  /// 안전하다는 오해를 준다.
+  final int? value;
   const BreakdownBar(this.label, this.value, {super.key});
 
   @override
   Widget build(BuildContext context) {
+    final v = value;
     return Padding(
       padding: const EdgeInsets.only(bottom: 11),
       child: Column(
@@ -78,15 +83,19 @@ class BreakdownBar extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(label, style: const TextStyle(fontSize: 14, color: AppColors.t1)),
-              Text('$value',
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+              Text(v == null ? '—' : '$v',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: v == null ? AppColors.t3 : AppColors.t1,
+                  )),
             ],
           ),
           const SizedBox(height: 5),
           ClipRRect(
             borderRadius: BorderRadius.circular(6),
             child: LinearProgressIndicator(
-              value: value / 100,
+              value: (v ?? 0) / 100,
               minHeight: 10,
               backgroundColor: AppColors.track,
               valueColor: const AlwaysStoppedAnimation(AppColors.blue),
