@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:another_telephony/telephony.dart';
+import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import 'analysis_api.dart';
@@ -36,8 +37,11 @@ class SmsListenerService {
   /// 두고 남는 시간에 여유를 남긴다.
   static const Duration _callTimeout = Duration(seconds: 3);
 
-  /// 이미 등록했는지. 로그인·설정 변경 등으로 여러 번 불려도 리스너는 하나만.
-  static bool _listening = false;
+  /// 지금 감시 중인지. 아직 한 번도 맞춰본 적이 없으면 null.
+  ///
+  /// null과 false를 구분하는 이유는 [start] 설명에 있다 — 꺼진 상태도 **한 번은
+  /// 플러그인에 알려줘야** 하기 때문에, "꺼져 있다"와 "아직 안 알렸다"가 다르다.
+  static bool? _listening;
 
   /// 자동 탐지에 필요한 권한(문자 수신)이 이미 있는지.
   static Future<bool> hasPermission() => Permission.sms.isGranted;
@@ -60,20 +64,41 @@ class SmsListenerService {
   /// 권한을 영구 거부한 사용자를 앱 설정 화면으로 보낸다.
   static Future<bool> openSettings() => openAppSettings();
 
-  /// 문자 수신 감시를 시작한다. 권한이 없거나 자동 탐지가 꺼져 있으면 아무것도
-  /// 하지 않는다(설정을 켜는 시점에 다시 불린다).
+  /// 설정·권한 상태에 맞춰 문자 수신 감시를 켜거나 끈다.
   ///
-  /// 앱 시작·로그인 직후처럼 여러 곳에서 불려도 안전하게 한 번만 등록한다.
+  /// **꺼진 상태도 반드시 플러그인에 알려야 한다.** 수신기는 매니페스트에 등록돼
+  /// 있어서 앱을 한 번이라도 실행하고 나면 우리가 감시를 시작했는지와 무관하게
+  /// 문자가 올 때마다 불린다. 이때 플러그인은 저장해 둔 콜백 주소로 백그라운드
+  /// isolate를 띄우려 하는데, 한 번도 등록한 적이 없으면 그 주소가 0이라
+  /// **앱 프로세스가 죽는다**(`FlutterCallbackInformation`이 null → NPE).
+  /// 그래서 감시하지 않을 때는 백그라운드 처리를 명시적으로 꺼둔다.
+  ///
+  /// 앱 시작·로그인·설정 변경 등 여러 곳에서 불려도 안전하다 — 상태가 그대로면
+  /// 아무것도 하지 않는다.
   static Future<void> start() async {
-    if (_listening) return;
-    if (!await AppPrefs.autoAnalysisEnabled()) return;
-    if (!await hasPermission()) return;
-    _telephony.listenIncomingSms(
-      onNewMessage: (message) => handleIncoming(message),
-      onBackgroundMessage: safefamSmsBackgroundHandler,
-    );
-    _listening = true;
+    final wanted =
+        await AppPrefs.autoAnalysisEnabled() && await hasPermission();
+    if (_listening == wanted) return;
+
+    if (wanted) {
+      _telephony.listenIncomingSms(
+        onNewMessage: (message) => handleIncoming(message),
+        onBackgroundMessage: safefamSmsBackgroundHandler,
+      );
+      _log('문자 수신 감시 시작');
+    } else {
+      // listenInBackground: false → 플러그인이 백그라운드 처리를 끈다.
+      // 앞에 있는 동안 오는 문자는 아무것도 하지 않는 콜백으로 흘려보낸다.
+      _telephony.listenIncomingSms(
+        onNewMessage: _ignore,
+        listenInBackground: false,
+      );
+      _log('문자 수신 감시 꺼둠(백그라운드 처리 비활성)');
+    }
+    _listening = wanted;
   }
+
+  static void _ignore(SmsMessage _) {}
 
   /// 수신 문자 한 통을 처리한다.
   ///
@@ -83,24 +108,29 @@ class SmsListenerService {
     SmsMessage message, {
     bool restoreSession = false,
   }) async {
+    _log('문자 수신 — 처리 시작(background=$restoreSession)');
     final content = message.body?.trim() ?? '';
-    if (content.isEmpty) return;
+    if (content.isEmpty) return _log('본문이 비어 건너뜀');
 
     // 서버가 켜져 있다고 본 게 아니라 기기에 적어둔 사본을 본다(더보기 토글이
     // 서버에 반영될 때 함께 기록된다). 꺼져 있으면 문자를 밖으로 내보내지 않는다.
-    if (!await AppPrefs.autoAnalysisEnabled()) return;
+    if (!await AppPrefs.autoAnalysisEnabled()) {
+      return _log('자동 탐지가 꺼져 있어 건너뜀');
+    }
 
     if (restoreSession && !await AuthApi.loadStoredTokens()) {
-      return; // 로그인 세션이 없으면 분석을 요청할 수 없다.
+      return _log('저장된 세션이 없어 건너뜀'); // 로그인해야 분석을 요청할 수 있다.
     }
-    if (AuthApi.accessToken == null) return;
+    if (AuthApi.accessToken == null) return _log('토큰이 없어 건너뜀');
 
     final sender = message.address?.trim();
 
     // 신뢰 발신자면 분석을 건너뛴다(1차 필터). 확인에 실패하면 검사하는 쪽으로
     // 기운다 — 프리패스는 검사를 생략하는 결정이라 모를 때 통과시키면 안 된다.
     if (sender != null && sender.isNotEmpty) {
-      if (await WhitelistApi.check(sender, timeout: _callTimeout)) return;
+      if (await WhitelistApi.check(sender, timeout: _callTimeout)) {
+        return _log('신뢰 발신자라 분석을 건너뜀');
+      }
     }
 
     final receivedAt = message.date != null
@@ -119,6 +149,17 @@ class SmsListenerService {
     );
     // 결과는 기다리지 않는다(위 클래스 주석). 실패해도 사용자를 방해하지 않도록
     // 조용히 넘긴다 — 수신함의 문자는 그대로 남아 있어 수동 검사로 다시 넣을 수 있다.
+    _log('분석 접수 요청을 보냈다');
+  }
+
+  /// 디버그 빌드에서만 남기는 진행 로그.
+  ///
+  /// 이 경로는 화면이 없어(백그라운드 수신) 눈으로 확인할 방법이 없다. 어디서
+  /// 멈췄는지 `adb logcat`으로 볼 수 있어야 손을 댈 수 있다.
+  /// **문자 본문·발신번호는 절대 남기지 않는다** — 로그는 다른 앱도 읽을 수 있고,
+  /// 개인정보를 기기에 흘리는 순간 서버 마스킹이 무의미해진다.
+  static void _log(String message) {
+    if (kDebugMode) debugPrint('[SafeFam SMS] $message');
   }
 
   /// 백엔드 `content` 상한(@Size(max = 5000)).

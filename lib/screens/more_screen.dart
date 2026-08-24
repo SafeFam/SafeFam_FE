@@ -52,9 +52,7 @@ class _MoreScreenState extends State<MoreScreen> {
       final granted = await SmsListenerService.hasPermission();
       // 서버가 정본이므로, 백그라운드 수신 처리가 보는 기기 사본을 맞춰둔다.
       await AppPrefs.setAutoAnalysisEnabled(s.autoAnalysisEnabled);
-      if (s.autoAnalysisEnabled && granted) {
-        await SmsListenerService.start();
-      }
+      await SmsListenerService.start();
       if (!mounted) return;
       setState(() {
         _settings = s;
@@ -93,9 +91,8 @@ class _MoreScreenState extends State<MoreScreen> {
     }
     await _updateSetting(autoAnalysisEnabled: v);
     await AppPrefs.setAutoAnalysisEnabled(_settings?.autoAnalysisEnabled ?? false);
-    if (_settings?.autoAnalysisEnabled ?? false) {
-      await SmsListenerService.start();
-    }
+    // 켤 때든 끌 때든 부른다 — 끄는 것도 플러그인에 알려야 한다.
+    await SmsListenerService.start();
   }
 
   /// '다시 묻지 않음'으로 거부한 경우 — 앱 안에서는 되돌릴 수 없어 설정으로 안내한다.
