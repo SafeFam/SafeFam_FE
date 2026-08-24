@@ -4,8 +4,12 @@ import '../services/app_prefs.dart';
 import '../widgets/common.dart';
 import 'login_screen.dart';
 
-/// 첫 실행 온보딩. 문자·알림·오버레이 권한을 왜 받는지 설명(심사 통과율 직결)하고,
+/// 첫 실행 온보딩. 문자·알림 권한을 왜 받는지 설명(심사 통과율 직결)하고,
 /// 마스킹·화이트리스트로 개인정보를 안전하게 처리한다는 신뢰 메시지를 전달.
+///
+/// ⚠️ **여기서 약속한 기능은 반드시 구현돼 있어야 한다.** 모든 신규 설치
+/// 사용자가 보는 화면이라, 없는 기능을 적어두면 그대로 신뢰를 잃는다.
+/// (화면 위 경고 오버레이는 범위에서 빠졌는데 문구만 남아 있었다 — #119)
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
   @override
@@ -31,9 +35,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     ),
     _OnbData(
       character: false,
-      icon: Icons.open_in_full,
-      title: '위험할 땐 화면 위에 크게 알려요',
-      desc: '다른 앱을 쓰는 중에도 위험을 놓치지 않도록\n화면 위에 경고를 띄우는 권한이 필요해요.',
+      icon: Icons.notifications_active_outlined,
+      title: '위험하면 가족에게도 알려요',
+      desc: '연결된 가족에게 알림이 함께 가서\n전화로 확인하고 같이 대응할 수 있어요.',
     ),
     _OnbData(
       character: true,

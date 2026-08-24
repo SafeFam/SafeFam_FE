@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common.dart';
 import '../services/auth_api.dart';
+import 'legal_screen.dart';
 import 'login_screen.dart';
 
 /// 마이페이지 — 내 정보 + 이름 수정 + 로그아웃 + 회원 탈퇴.
@@ -254,10 +255,10 @@ class _MyPageScreenState extends State<MyPageScreen> {
                 child: Column(
                   children: [
                     _link(Icons.description_outlined, '이용약관',
-                        onTap: () => _showDoc('이용약관')),
+                        onTap: () => _showDoc(LegalDoc.terms)),
                     const Divider(color: AppColors.line, height: 1),
                     _link(Icons.shield_outlined, '개인정보처리방침',
-                        onTap: () => _showDoc('개인정보처리방침')),
+                        onTap: () => _showDoc(LegalDoc.privacy)),
                   ],
                 ),
               ),
@@ -322,7 +323,8 @@ class _MyPageScreenState extends State<MyPageScreen> {
         ),
       );
 
-  void _showDoc(String title) => _toast('$title 화면은 준비 중이에요');
+  void _showDoc(LegalDoc doc) => Navigator.push(
+      context, MaterialPageRoute(builder: (_) => LegalScreen(doc)));
 
   Widget _link(IconData icon, String label, {VoidCallback? onTap}) => InkWell(
         onTap: onTap,

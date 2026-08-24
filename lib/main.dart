@@ -21,7 +21,14 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  const nativeAppKey = String.fromEnvironment('KAKAO_NATIVE_APP_KEY');
+  // 기본값은 AndroidManifest의 리다이렉트 스킴에 박힌 것과 **같은 키**여야 한다.
+  // 주입을 잊고 그냥 `flutter run`을 하면 빈 키로 초기화돼 카카오 로그인이
+  // 조용히 깨졌다(#119). 네이티브 앱 키는 APK에 실리는 반공개값이라 매니페스트와
+  // 함께 소스에 두는 것이 카카오 표준 관행이다.
+  const nativeAppKey = String.fromEnvironment(
+    'KAKAO_NATIVE_APP_KEY',
+    defaultValue: '824e7974984072aa3525884c029703d7',
+  );
   await KakaoSdk.init(nativeAppKey: nativeAppKey);
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,

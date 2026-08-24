@@ -1,16 +1,19 @@
 # 세이프팸 (SafeFam) — Flutter UI 스캐폴드
 
 온 가족 금융사기 지킴이 앱. 피그마 최종 시안을 Flutter로 옮긴 앱 (Pixel 7 / Flutter 3.44 기준). **인증·마이페이지·문자 분석(수동 검사, 비동기 폴링)·가족 보호(초대코드+QR 연결)·가족 공동 대응(HIGH 알림 → 전화·안전 확인·이미 송금)·신고·신뢰 발신자(화이트리스트)까지 백엔드와 http 연동 완료**. 문자 분석 결과는 **3중 스코어 게이지 + 위험 근거 카드**로 렌더하며, 외부 AI 일부 장애 시 **부분성공 안전모드**(어떤 분석이 빠졌는지 안내 + 보수적 대응 안내)로 표시한다. 개인정보 마스킹은 **서버에서 처리**(프론트 클라이언트 마스킹 제거, #80)하며, FCM은 **기기 등록/해제까지 연동**(알림 수신 처리는 타 멤버 담당). 가족 QR은 코드 연동 완료·실기기 카메라 검증만 남음.
-> **범위 제외(2026-08-10)**: 문자 자동 탐지(알림 리스너)·강제 오버레이 경고는 팀 착수 합의가 없어 계획에서 제외했다. 문자 검사는 **사용자가 직접 넣는 수동 분석**이 정식 경로다.
+문자 검사는 두 경로다 — 사용자가 직접 넣는 **수동 분석**(검사 탭)과, 받은 문자를 감지해 자동으로 접수하는 **자동 탐지**(더보기 > 탐지·알림에서 켜고 끔, #118).
+> **범위 제외(2026-08-10)**: 강제 오버레이 경고(다른 앱 위에 표시)는 팀 착수 합의가 없어 계획에서 제외했다.
 
 ## 흐름
-(스플래시 → 온보딩) → **로그인**(휴대폰 번호 + 비밀번호 · 카카오 · 구글) → 신규는 **회원가입**(휴대폰 인증 요청→확인 → 닉네임 + 비밀번호) → **가족 등록**(보호자/피보호자) → 보호자는 초대 코드 발급 → 연결 후 이름 설정 / 피보호자는 코드 입력 → 메인.
-> 진입점은 현재 `LoginScreen`. 로그인 화면의 '비밀번호를 잊으셨나요?' → **비밀번호 재설정**(휴대폰 인증 → 새 비밀번호). 로그인 실패 누적으로 **계정이 잠기면** 안내 후 **계정 잠금 해제**(휴대폰 인증 → `POST /auth/unlock`)로 풀 수 있음. **카카오로 계속하기** → 카카오 로그인, 신규회원이면 **카카오 온보딩**(휴대폰 인증 → 이름)으로 가입 후 가족 등록. 스플래시·온보딩은 아직 앞단에 연결 전(별도 작업 예정).
-> 카카오 로그인은 빌드 시 앱 키 주입 필요: `flutter run --dart-define=KAKAO_NATIVE_APP_KEY=<네이티브 앱 키>` (AndroidManifest의 리다이렉트 스킴 값과 동일해야 함).
+(스플래시 → 온보딩) → **로그인**(휴대폰 번호 + 비밀번호 · 카카오) → 신규는 **회원가입**(휴대폰 인증 요청→확인 → 닉네임 + 비밀번호) → **가족 등록**(보호자/피보호자) → 보호자는 초대 코드 발급 → 연결 후 이름 설정 / 피보호자는 코드 입력 → 메인.
+> 진입점은 `main.dart`의 `_Bootstrap` — 저장된 세션과 온보딩 이력을 보고 **스플래시(판정 중) → 온보딩(최초 실행) / 로그인(미로그인) / 메인(세션 복원)**으로 분기한다. 로그인 화면의 '비밀번호를 잊으셨나요?' → **비밀번호 재설정**(휴대폰 인증 → 새 비밀번호). 로그인 실패 누적으로 **계정이 잠기면** 안내 후 **계정 잠금 해제**(휴대폰 인증 → `POST /auth/unlock`)로 풀 수 있음. **카카오로 계속하기** → 카카오 로그인, 신규회원이면 **카카오 온보딩**(휴대폰 인증 → 이름)으로 가입 후 가족 등록.
+> 구글 로그인은 **버튼을 내렸다** — 백엔드 엔드포인트가 없어 누르면 반드시 실패했다(#119). `AuthApi.socialLogin`의 `'google'` 분기는 서버가 생길 때를 위해 남겨뒀다.
+> 카카오 앱 키는 소스에 기본값이 있어 그냥 `flutter run`으로 동작한다. 다른 키로 바꿔 쓸 때만 주입: `flutter run --dart-define=KAKAO_NATIVE_APP_KEY=<네이티브 앱 키>` (AndroidManifest의 리다이렉트 스킴 값과 동일해야 함).
 
 메인 하단 탭 **홈 · 이력 · 가족 · 검사** (설정=더보기는 홈 우상단 톱니바퀴로 진입).
 검사 탭 → 입력한 문자를 분석 API(`POST /api/v1/analyses`, source=MANUAL)로 접수(개인정보 마스킹은 서버가 처리) → 결과(**3중 스코어 게이지 + breakdown**). 분석은 **비동기**라 접수(202) 후 상세를 **종료 상태까지 폴링**하며 "분석 중"을 보여주고, 완료/부분 성공/실패에 따라 화면을 다르게 렌더한다(실패는 '안전'이 아니라 별도 안내). 요청 한도(분당) 초과 시 429 안내를 구분해 노출. 결과 → 대응 챗봇 시트 → 신고 시트 / 전화 / 공유.
-보이스피싱·URL 결과는 더보기 > 화면 미리보기(개발용)에서 확인.
+마이페이지에서 **이용약관·개인정보처리방침**을 앱 안에서 읽을 수 있다(`legal_screen.dart`, 정적 문서).
+> 보이스피싱·URL 결과 화면은 하드코딩된 예시 데이터를 진짜 결과와 똑같은 UI로 보여주므로, **디버그 빌드에서만** 더보기 > 화면 미리보기에 노출된다(#119).
 
 ## 실행 (Android Studio)
 1. `flutter create safefam` (경로 공백·한글·OneDrive 금지)
@@ -26,12 +29,13 @@
   > ★**API는 `api.` 서브도메인**이다. 루트 `safefam.site`는 관리자 웹(SafeFam_Web, Vercel)이 쓰고 있어 API를 부르면 308로 `www.`에 리다이렉트되고 SPA 문서가 돌아온다. 앱·웹 모두 `api.safefam.site`를 쓴다.
   > 도메인으로만 접근한다 — nginx가 443에서 받아 넘기고 인증서가 `api.safefam.site` 발급이라, IP를 직접 넣으면 붙지 않는다.
 - 인증 계약: 공통 응답 `ApiResponse{status,message,data}`, 토큰은 바디(`TokenResponse`). 인증이 필요한(보호된) API 요청에만 `Authorization: Bearer <accessToken>`을 붙임 — 가입·로그인처럼 토큰 없는 요청엔 미적용.
-- 문자 분석(**비동기**): `POST /api/v1/analyses`(접수 → **202 `{analysisId, status}`**, 완성 결과 아님)·`GET`(이력, page·필터)·`GET /{id}`(상세, **종료 상태까지 폴링**)·`DELETE /{id}`·`POST /{id}/feedback`. `status`=`PENDING·PROCESSING·COMPLETED·PARTIAL_SUCCESS·FAILED`. 응답 `AnalysisResponse{status, riskScore?, riskLevel?(HIGH/MEDIUM/LOW), category?, failureCode?, scoreBreakdown{llmScore,urlScore,patternScore}, indicators, urls, recommendedActions, analyzedAt?}` — **처리 전·실패엔 점수·등급이 null**(완료/부분 성공에서만 신뢰). 통계는 `GET /api/v1/statistics/overview?period=`. (전부 보호된 API)
+- 문자 분석(**비동기**): `POST /api/v1/analyses`(접수 → **202 `{analysisId, status}`**, 완성 결과 아님)·`GET`(이력, page·필터)·`GET /{id}`(상세, **종료 상태까지 폴링**)·`DELETE /{id}`·`POST /{id}/feedback`. `status`=`PENDING·PROCESSING·COMPLETED·PARTIAL_SUCCESS·FAILED`. 응답 `AnalysisResponse{status, riskScore?, riskLevel?(HIGH/MEDIUM/LOW), category?, failureCode?, scoreBreakdown{textScore?,urlScore?,rulesScore?}, indicators, urls, recommendedActions, analyzedAt?}` — **처리 전·실패엔 점수·등급이 null**(완료/부분 성공에서만 신뢰). 통계는 `GET /api/v1/statistics/overview?period=`. (전부 보호된 API)
   - **마스킹은 서버 담당**(#80): 프론트 클라이언트 마스킹(`util/masking.dart`)은 제거됨 — `content`를 그대로 보내고 서버가 개인정보를 마스킹한다. 단 결과 공유(카톡·문자) 직전에는 유출 방어용 마스킹(`analysis_api.dart` `_redactPii`)을 한 번 더 적용.
   - **레이트리밋**: `POST /analyses`는 유저 기준 분당 제한이 있어 초과 시 429가 오며, 프론트는 일반 실패와 구분해 서버 안내 문구를 노출.
   - **신고**: `POST /api/v1/analyses/{id}/report {type:PHISHING|SPAM|OTHER}` — 저장된 분석을 익명 접수(원문·발신번호·userId 제외, 최초 201·재신고 200 멱등). 결과 화면 → 대응 도우미 → 신고.
 - 가족 보호: `POST /api/v1/family/invite`(초대코드/QR 토큰 발급)·`POST /link/code`(코드로 연결)·`POST /link/qr`(QR로 연결)·`GET /members`·`PATCH /{linkId}`(관계 설정)·`DELETE /{linkId}`. **표시 이름(관계)은 서버에 저장**(`relationship`, 최대 20자) — 기기를 바꿔도 유지된다. 예전 기기 로컬(AppPrefs) 별명은 목록을 처음 열 때 서버로 한 번 올리고 로컬에서 지운다. 표시 우선순위는 `relationship` → `wardName` → 전화번호(`wardName`은 SafeFam_BE #97에서 옛 `wardNickname`을 대체한 필드로, 피보호자 가입 이름이 실제로 채워진다). QR은 보호자 화면이 `qrToken`을 QR로 표시(`qr_flutter`)하고 피보호자가 스캔(`mobile_scanner`)해 연결 — 실기기 카메라 검증은 후속. (전부 보호된 API)
-- 신뢰 발신자(화이트리스트): `POST /api/v1/whitelists`·`GET`·`DELETE /{id}`. 등록한 발신자는 자동 탐지 시 분석 프리패스. 더보기 > 탐지·알림에서 관리. (프리패스 확인 `/check`는 자동 탐지 흐름 담당)
+- 신뢰 발신자(화이트리스트): `POST /api/v1/whitelists`·`GET`·`GET /check?sender=`·`DELETE /{id}`. 등록한 발신자는 자동 탐지 시 분석을 건너뛴다(`/check` → `{sender, whitelisted}`). 더보기 > 탐지·알림에서 관리.
+- 문자 자동 탐지(#118): `RECEIVE_SMS` 권한 + 매니페스트 수신기(`another_telephony`) → 자동 탐지 설정 확인 → 화이트리스트 프리패스 확인 → `POST /analyses`(source=**AUTO**). 앱이 꺼져 있어도 백그라운드 콜백으로 접수된다. **결과는 폴링하지 않는다** — HIGH면 백엔드가 FCM으로 밀어주고 알림을 누르면 상세로 간다. 수신 브로드캐스트는 시간이 짧아 호출 타임아웃을 3초로 줄이고, `clientMessageId`를 문자 내용으로 결정해 중복 접수를 백엔드가 멱등 처리하게 한다.
 - FCM 기기: 로그인/자동로그인 시 `POST /api/v1/devices`로 등록(응답 `deviceId` 보관), **로그아웃 시 `DELETE /api/v1/devices/{deviceId}`로 해제**해 이전 계정 푸시를 끊음. 알림 수신·표시 로직은 타 멤버 담당.
 - 인증 만료 대응: 보호된 요청이 401이면 `refreshToken`으로 **자동 재발급 후 1회 재시도**(single-flight, 회전 토큰). 재발급까지 실패하면 세션을 폐기하고 로그인 화면으로 되돌림.
 - 개발용 http 평문 통신은 **디버그 빌드에만** 허용(`android/app/src/debug` network security config). 릴리스는 https 강제.
@@ -44,12 +48,13 @@ lib/
   screens/
     auth.dart          스플래시
     onboarding.dart    온보딩·권한
-    login_screen.dart  로그인(휴대폰+비밀번호 · 회원가입 · 비밀번호 재설정 · 카카오 · 구글)
+    login_screen.dart  로그인(휴대폰+비밀번호 · 회원가입 · 비밀번호 재설정 · 카카오)
     signup_screen.dart 회원가입(휴대폰 인증 → 닉네임+비밀번호)
     reset_password_screen.dart 비밀번호 재설정(휴대폰 인증 → 새 비밀번호)
     unlock_account_screen.dart 계정 잠금 해제(휴대폰 인증 → auth/unlock)
     kakao_onboarding_screen.dart 카카오 신규회원 온보딩(카카오 로그인 → 휴대폰 인증+이름)
-    mypage_screen.dart 마이페이지(내 정보 조회·이름 수정·로그아웃·회원 탈퇴)
+    mypage_screen.dart 마이페이지(내 정보 조회·이름 수정·로그아웃·회원 탈퇴·약관)
+    legal_screen.dart  이용약관·개인정보처리방침(앱 내 정적 문서)
     family_flow.dart   가족 등록 · 초대코드 · QR 표시 · 연결 · 이름 설정
     qr_scan_screen.dart 가족 QR 스캔(mobile_scanner) → qrToken 반환
     whitelist_screen.dart 신뢰 발신자 관리(목록·추가·삭제)
@@ -64,8 +69,11 @@ lib/
     analysis_api.dart  문자 분석 API — 분석·이력·상세·삭제·피드백·통계·신고(analyses·statistics)
     family_api.dart    가족 보호 API — 초대·코드/QR 연결·목록·해제(family)
     whitelist_api.dart 신뢰 발신자 API — 목록·등록·삭제(whitelists)
+    chat_api.dart      대응 챗봇 API — `POST /chat`(analysisId 선택)
+    family_safety_api.dart 가족 공동 대응 — 케이스 조회·전화·안전확인/이미송금
     device_api.dart    FCM 기기 등록/해제(devices)
-    app_prefs.dart     기기 로컬 저장(온보딩·가족 별명·deviceId·접근성, flutter_secure_storage)
+    sms_listener_service.dart 문자 수신 감지 → 화이트리스트 프리패스 → 자동 분석 접수(#118)
+    app_prefs.dart     기기 로컬 저장(온보딩·deviceId·접근성·자동 탐지 사본, flutter_secure_storage)
     app_settings.dart  접근성 전역 설정(큰 글씨·음성, ValueNotifier)
     tts_service.dart   음성 안내(flutter_tts, 한국어·재생/멈춤)
     notification_service.dart FCM 수신·알림 라우팅(포그라운드/백그라운드/콜드스타트)
@@ -100,14 +108,20 @@ test/services/analysis_status_test.dart  분석 상태 파싱 회귀 테스트(�
 - ✅ 가족 원격 모니터링 완료 — 보호자가 피보호자 탐지 이력 조회(`GET /family/ward/{id}/logs`), 가족 멤버 탭 → 읽기 전용 이력(`ward_logs_screen`) (이슈 #75)
 - ✅ 고령층 접근성 실동작 완료 — '글씨 더 크게'(앱 전체 `MediaQuery.textScaler`)·'음성으로 읽어주기'/'다시 들려주기'(TTS, `flutter_tts`) 실제 동작, `AppSettings`로 기기 저장 (이슈 #78)
 - ✅ 분석 결과 공유 — `share_plus`로 결과 요약 공유(원문·개인정보 제외), 결과 화면 공유 시트
+- ✅ 대응 챗봇 연동 완료 — `POST /api/v1/chat`(`chat_api.dart`). `analysisId`는 **선택**이라 분석 없이도 상담할 수 있고(더보기 > 대응 도우미), 결과 화면에서 열면 그 분석의 위험도·근거가 함께 실린다
+- ✅ 가족 공동 대응 연동 완료 — 피보호자 HIGH 케이스 조회 → 전화·안전 확인·이미 송금(`family_safety_api.dart`, `family_alerts_screen`). 홈 우상단 **종 아이콘**으로도 바로 들어간다(#119)
+- ✅ 이용약관·개인정보처리방침 추가 — '준비 중' 토스트만 뜨던 자리를 앱 내 정적 문서로 교체(`legal_screen.dart`, #119)
+- ✅ 문자 자동 탐지 연동 완료 — `RECEIVE_SMS` 권한 + 매니페스트 수신기 + 백그라운드 콜백 → 화이트리스트 프리패스 → `source=AUTO` 접수. 더보기 토글이 권한을 먼저 받고, 권한이 없으면 그 자리에서 알린다 (`sms_listener_service.dart`, 이슈 #118)
 - 회원가입/재설정/잠금해제 인증문자는 실제 SMS(Solapi) 발송이라 서버 SMS 설정 + 실제 수신 가능한 번호 필요
 
 ### 남은 작업
 - **백엔드 준비됨 · 미연동** — 없음. 백엔드 구현분 중 프론트가 붙일 실사용 엔드포인트는 전부 소진(컨트롤러 8개 전수 대조 기준).
-- **온디바이스/실기기 필요** — 최근 머지분 E2E 검증(배포 서버 연결·가족 관계 저장·초대 코드 입력·챗봇) · 가족 QR 실기기 카메라 검증 · TTS 실제 음성 출력 검증
-- **범위 제외** — 문자 자동 탐지(알림 리스너)·긴급 오버레이. 팀 착수 합의가 없어 계획에서 뺐다(2026-08-10).
+- **온디바이스/실기기 필요** — **문자 자동 탐지 수신 E2E**(실제 문자 또는 `adb emu sms send`) · 최근 머지분 E2E 검증(배포 서버 연결·가족 관계 저장·초대 코드 입력·챗봇) · 가족 QR 실기기 카메라 검증 · TTS 실제 음성 출력 검증
+- ⚠️ **`flutter test` 실행 불가(환경)** — Dart VM의 FFI 변환기가 크래시해(`ffi/use_sites.dart`) 테스트 스위트 로딩이 실패한다. 한글 경로와 무관하며 **앱 빌드·실행은 정상**. `test/services/analysis_status_test.dart`가 그동안 돌지 못한 상태다.
+- **범위 제외** — 강제 오버레이 경고(`SYSTEM_ALERT_WINDOW`). 팀 착수 합의가 없어 계획에서 뺐다(2026-08-10). `screens/overlay_alert.dart`는 어디서도 호출되지 않는 잔여 코드다.
 - **프론트 코드 품질(무백엔드)** — 상태 칩·이력 타일 공용 위젯 추출(history↔ward_logs 중복) · 상태관리(Provider/Riverpod) · 테스트 확대
-- **타 멤버/백엔드 미존재** — FCM 알림 수신 로직(타 멤버 담당) · URL 검사 전용 백엔드·AI 대응 챗봇(FastAPI)은 아직 없어 해당 화면은 UI 목업 유지
+- **타 멤버/백엔드 미존재** — FCM 알림 수신 로직(타 멤버 담당) · **URL 검사 전용 백엔드는 아직 없다** — 링크 위험도는 분석 결과 안의 URL 카드로 대신 보여준다(별도 URL 검사 화면은 디버그 전용 목업)
+- **AI 서버 영어 문구 노출**(타팀) — `hybrid_analyzer.py`가 만든 영어 `reason`이 결과 설명에 그대로 나온다. 서버가 만든 자유 문자열이라 프론트에서 막을 수 없다(자세한 내용은 `docs/ai-english-strings-handoff.md`)
 
 ## Firebase 설정 (FCM)
 FCM 관련 파일은 보안상 `.gitignore`로 관리합니다. 로컬에서 직접 생성이 필요합니다.

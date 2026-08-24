@@ -902,8 +902,9 @@ class UrlResultScreen extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 12),
-          const SfButton('접속 차단하기', icon: Icons.block, variant: SfBtn.primary),
+          // '접속 차단하기' 버튼이 있었지만 onTap조차 없었다(#119). 앱이 다른 앱의
+          // 접속을 막을 방법이 없으므로 되살리지 않고 지운다 — 실제 결과 화면의
+          // 링크 카드처럼 '열지 말라'고 안내하는 것이 우리가 할 수 있는 전부다.
         ],
       ),
     );
