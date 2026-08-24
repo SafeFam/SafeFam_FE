@@ -74,28 +74,33 @@ class SmsListenerService {
   /// 그래서 감시하지 않을 때는 백그라운드 처리를 명시적으로 꺼둔다.
   ///
   /// 앱 시작·로그인·설정 변경 등 여러 곳에서 불려도 안전하다 — 상태가 그대로면
-  /// 아무것도 하지 않는다.
+  /// 아무것도 하지 않는다. 앱 시작 경로에서도 불리므로 **예외를 밖으로 내보내지
+  /// 않는다**. 여기서 터지면 문자 감시가 아니라 앱 자체가 안 뜬다.
   static Future<void> start() async {
-    final wanted =
-        await AppPrefs.autoAnalysisEnabled() && await hasPermission();
-    if (_listening == wanted) return;
+    try {
+      final wanted =
+          await AppPrefs.autoAnalysisEnabled() && await hasPermission();
+      if (_listening == wanted) return;
 
-    if (wanted) {
-      _telephony.listenIncomingSms(
-        onNewMessage: (message) => handleIncoming(message),
-        onBackgroundMessage: safefamSmsBackgroundHandler,
-      );
-      _log('문자 수신 감시 시작');
-    } else {
-      // listenInBackground: false → 플러그인이 백그라운드 처리를 끈다.
-      // 앞에 있는 동안 오는 문자는 아무것도 하지 않는 콜백으로 흘려보낸다.
-      _telephony.listenIncomingSms(
-        onNewMessage: _ignore,
-        listenInBackground: false,
-      );
-      _log('문자 수신 감시 꺼둠(백그라운드 처리 비활성)');
+      if (wanted) {
+        _telephony.listenIncomingSms(
+          onNewMessage: (message) => handleIncoming(message),
+          onBackgroundMessage: safefamSmsBackgroundHandler,
+        );
+        _log('문자 수신 감시 시작');
+      } else {
+        // listenInBackground: false → 플러그인이 백그라운드 처리를 끈다.
+        // 앞에 있는 동안 오는 문자는 아무것도 하지 않는 콜백으로 흘려보낸다.
+        _telephony.listenIncomingSms(
+          onNewMessage: _ignore,
+          listenInBackground: false,
+        );
+        _log('문자 수신 감시 꺼둠(백그라운드 처리 비활성)');
+      }
+      _listening = wanted;
+    } catch (e) {
+      _log('감시 상태를 맞추지 못했다: $e');
     }
-    _listening = wanted;
   }
 
   static void _ignore(SmsMessage _) {}
