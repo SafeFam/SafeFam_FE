@@ -1,8 +1,6 @@
-import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common.dart';
-import 'results.dart';
 import 'family_flow.dart';
 import 'mypage_screen.dart';
 import 'login_screen.dart';
@@ -288,26 +286,10 @@ class _MoreScreenState extends State<MoreScreen> {
               _link(Icons.logout, '로그아웃', onTap: () => _logout(context)),
             ]),
           ),
-          // 하드코딩된 가짜 결과를 진짜 결과와 똑같은 UI로 보여주는 화면들이라
-          // 실사용자 빌드에서는 내보내지 않는다(#119). 디자인 확인용으로만 남긴다.
-          if (kDebugMode) ...[
-            const SizedBox(height: 16),
-            const SectionLabel('화면 미리보기 · 개발용'),
-            SfCard(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Column(children: [
-                _link(Icons.phone_in_talk_outlined, '보이스피싱 결과',
-                    onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => const VoiceResultScreen()))),
-                const Divider(color: AppColors.line, height: 1),
-                _link(Icons.link, 'URL 검사 결과',
-                    onTap: () => Navigator.push(context,
-                        MaterialPageRoute(builder: (_) => const UrlResultScreen()))),
-              ]),
-            ),
-          ],
+          // '화면 미리보기 · 개발용' 섹션이 있었다. 하드코딩된 가짜 결과를 진짜와
+          // 똑같은 UI로 보여주는 화면 둘(보이스피싱·URL 검사)로 가는 입구였는데,
+          // 화면째로 지웠다(#119). 보이스피싱 자동 탐지는 범위 밖이고, URL 검사는
+          // 전용 백엔드가 없어 분석 결과 안의 링크 카드가 그 자리를 대신한다.
         ],
       ),
     );
