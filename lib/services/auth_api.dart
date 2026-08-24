@@ -89,6 +89,27 @@ class AuthApi {
     await _storage.delete(key: _kRefresh);
   }
 
+  /// 저장소의 토큰을 메모리 캐시로 올리기만 한다(재발급 없음).
+  ///
+  /// 문자 자동 탐지의 백그라운드 isolate는 메인 isolate와 static을 공유하지 않아
+  /// [accessToken]이 비어 있는 채로 시작한다. 그렇다고 [restoreSession]을 쓰면
+  /// refreshToken이 **1회용(회전)**이라 메인 isolate가 들고 있는 토큰이 죽는다
+  /// (SafeFam_BE #56 — 재사용을 탈취로 간주). 그래서 여기서는 읽기만 하고,
+  /// 액세스 토큰이 이미 만료됐을 때만 [sendAuthorized]의 401 경로가 한 번
+  /// 재발급하도록 맡긴다.
+  ///
+  /// 쓸 만한 세션이 없으면 false.
+  static Future<bool> loadStoredTokens() async {
+    try {
+      accessToken = await _storage.read(key: _kAccess);
+      refreshToken = await _storage.read(key: _kRefresh);
+    } catch (_) {
+      return false;
+    }
+    return (accessToken?.isNotEmpty ?? false) &&
+        (refreshToken?.isNotEmpty ?? false);
+  }
+
   static Map<String, String> _headers({bool auth = false}) {
     final h = {'Content-Type': 'application/json'};
     if (auth && accessToken != null) {

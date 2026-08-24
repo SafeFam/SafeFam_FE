@@ -19,6 +19,8 @@ import 'auth_api.dart' show AuthApi;
 ///        ※ 이미 있으면 WHITELIST_DUPLICATE(409). 발신자는 서버가 정규화한다
 ///          (전화=숫자만·82→국내, 문자 발신자=대문자).
 ///   - GET             → List<WhitelistResponse> (최신 등록순)
+///   - GET /check?sender={발신자} → WhitelistCheckResponse { sender, whitelisted }
+///        ※ whitelisted가 true면 분석 API 호출을 생략해도 된다는 뜻.
 ///   - DELETE /{id}    → 204 (소유권 검증; 없으면 WHITELIST_NOT_FOUND 404)
 ///  에러 바디는 message만 있다(AuthApi와 동일 관례).
 class WhitelistApi {
@@ -85,6 +87,31 @@ class WhitelistApi {
       return _errorMessage(res) ?? '등록하지 못했어요. 잠시 후 다시 시도해 주세요.';
     } catch (_) {
       return '등록하지 못했어요. 잠시 후 다시 시도해 주세요.';
+    }
+  }
+
+  /// 발신자가 신뢰 목록에 있는지 확인한다(자동 탐지의 분석 프리패스 판단용).
+  ///
+  /// **확실히 등록된 경우에만 true.** 통신 실패·응답 손상이면 false를 돌려줘
+  /// 분석을 그대로 진행시킨다 — 프리패스는 검사를 건너뛰는 결정이라, 모르면
+  /// 검사하는 쪽이 안전하다.
+  ///
+  /// [timeout]은 백그라운드 수신 처리처럼 시간 예산이 빠듯한 경로에서 줄여 쓴다.
+  static Future<bool> check(String sender, {Duration? timeout}) async {
+    final trimmed = sender.trim();
+    if (trimmed.isEmpty) return false;
+    try {
+      final res = await AuthApi.sendAuthorized((headers) => http
+          .get(
+              Uri.parse('${AuthApi.baseUrl}/api/v1/whitelists/check')
+                  .replace(queryParameters: {'sender': trimmed}),
+              headers: headers)
+          .timeout(timeout ?? _timeout));
+      if (!_isSuccess(res) || res.body.isEmpty) return false;
+      final data = jsonDecode(res.body)['data'];
+      return data is Map<String, dynamic> && data['whitelisted'] == true;
+    } catch (_) {
+      return false;
     }
   }
 

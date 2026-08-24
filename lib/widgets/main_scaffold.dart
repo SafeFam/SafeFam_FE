@@ -4,6 +4,7 @@ import '../screens/home_screen.dart';
 import '../screens/history_screen.dart';
 import '../screens/family_screen.dart';
 import '../screens/check_screen.dart';
+import '../services/sms_listener_service.dart';
 
 /// 하단 탭 4개: 홈 · 이력 · 가족 · 검사. (더보기는 홈 톱니바퀴로 이동)
 class MainScaffold extends StatefulWidget {
@@ -15,6 +16,15 @@ class MainScaffold extends StatefulWidget {
 
 class _MainScaffoldState extends State<MainScaffold> {
   late int _index = widget.initialIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    // 문자 자동 탐지 감시 시작. 로그인·회원가입·세션 복구 어느 쪽으로 들어와도
+    // 반드시 이 화면을 거치므로 여기 한 곳에서만 켠다. 설정이 꺼져 있거나 권한이
+    // 없으면 내부에서 그냥 돌아오고, 여러 번 불려도 리스너는 하나만 등록된다.
+    SmsListenerService.start();
+  }
 
   static const _tabs = [
     HomeScreen(),
