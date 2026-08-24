@@ -89,8 +89,12 @@ class _MoreScreenState extends State<MoreScreen> {
       }
       setState(() => _smsPermission = true);
     }
-    await _updateSetting(autoAnalysisEnabled: v);
-    await AppPrefs.setAutoAnalysisEnabled(_settings?.autoAnalysisEnabled ?? false);
+    // 기기 사본에는 **서버가 확인해 준 값만** 적는다. PATCH가 실패했는데 켜진
+    // 것으로 적어두면, 서버 설정은 꺼져 있는데 기기는 문자를 분석에 보낸다.
+    final applied = await _updateSetting(autoAnalysisEnabled: v);
+    if (applied != null) {
+      await AppPrefs.setAutoAnalysisEnabled(applied.autoAnalysisEnabled);
+    }
     // 켤 때든 끌 때든 부른다 — 끄는 것도 플러그인에 알려야 한다.
     await SmsListenerService.start();
   }
@@ -127,9 +131,14 @@ class _MoreScreenState extends State<MoreScreen> {
   }
 
   /// 토글 변경 → 낙관적으로 UI 먼저 반영하고 PATCH. 실패하면 되돌리고 안내.
-  Future<void> _updateSetting({bool? autoAnalysisEnabled, bool? pushEnabled}) async {
+  ///
+  /// **서버가 확인해 준 설정**을 돌려준다(실패하면 null). 화면을 벗어난 뒤에는
+  /// `setState`를 건너뛰어 `_settings`에 낙관적 값이 남으므로, 호출부는 그 필드가
+  /// 아니라 이 반환값을 봐야 한다.
+  Future<UserSettings?> _updateSetting(
+      {bool? autoAnalysisEnabled, bool? pushEnabled}) async {
     final prev = _settings;
-    if (prev == null) return;
+    if (prev == null) return null;
     setState(() {
       _savingSettings = true;
       _settings = prev.copyWith(
@@ -141,7 +150,7 @@ class _MoreScreenState extends State<MoreScreen> {
       autoAnalysisEnabled: autoAnalysisEnabled,
       pushEnabled: pushEnabled,
     );
-    if (!mounted) return;
+    if (!mounted) return updated;
     setState(() {
       _savingSettings = false;
       if (updated != null) {
@@ -153,6 +162,7 @@ class _MoreScreenState extends State<MoreScreen> {
     if (updated == null) {
       _toast('설정을 변경하지 못했어요. 잠시 후 다시 시도해 주세요');
     }
+    return updated;
   }
 
   Widget _link(IconData icon, String label, {VoidCallback? onTap}) => InkWell(

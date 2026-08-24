@@ -106,7 +106,9 @@ class WhitelistApi {
               Uri.parse('${AuthApi.baseUrl}/api/v1/whitelists/check')
                   .replace(queryParameters: {'sender': trimmed}),
               headers: headers)
-          .timeout(timeout ?? _timeout));
+          .timeout(timeout ?? _timeout),
+          // 401이 끼면 재발급 구간이 통째로 더 붙는다(analyze와 동일한 이유).
+          reissueTimeout: timeout);
       if (!_isSuccess(res) || res.body.isEmpty) return false;
       final data = jsonDecode(res.body)['data'];
       return data is Map<String, dynamic> && data['whitelisted'] == true;

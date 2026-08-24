@@ -138,18 +138,20 @@ class SmsListenerService {
       }
     }
 
-    final receivedAt = message.date != null
-        ? DateTime.fromMillisecondsSinceEpoch(message.date!)
-        : DateTime.now();
+    // 기기가 준 수신 시각. 없으면 서버에 보낼 값은 지금으로 채우되, 멱등키에는
+    // 쓰지 않는다(아래 [_clientMessageId] 설명).
+    final deviceTime = message.date == null
+        ? null
+        : DateTime.fromMillisecondsSinceEpoch(message.date!);
 
     await AnalysisApi.analyze(
       content: content.length > _maxContent
           ? content.substring(0, _maxContent)
           : content,
       sender: sender,
-      receivedAt: receivedAt,
+      receivedAt: deviceTime ?? DateTime.now(),
       source: AnalysisSource.auto,
-      clientMessageId: _clientMessageId(sender, content, receivedAt),
+      clientMessageId: _clientMessageId(sender, content, deviceTime),
       timeout: _callTimeout,
     );
     // 결과는 기다리지 않는다(위 클래스 주석). 실패해도 사용자를 방해하지 않도록
@@ -173,15 +175,31 @@ class SmsListenerService {
   /// 같은 문자를 두 번 분석하지 않기 위한 식별자(백엔드가 이 값으로 멱등 처리).
   ///
   /// 앱이 앞에 있는 짧은 순간에는 foreground/background 콜백이 겹쳐 같은 문자가
-  /// 두 번 들어올 수 있어, **문자 내용만으로 결정되는 값**이어야 한다. 수신
-  /// 시각과 발신자, 본문 길이를 묶으면 한 기기 안에서 충돌할 일이 없다.
-  /// 백엔드 상한이 100자라 발신자는 잘라 쓴다.
+  /// 두 번 들어올 수 있어, **문자에서만 결정되는 값**이어야 한다.
+  ///
+  /// 그래서 [deviceTime]이 없을 때 `DateTime.now()`로 채우면 안 된다 — 두 콜백이
+  /// 서로 다른 시각을 얻어 서로 다른 키가 되고, 백엔드는 같은 문자인 줄 몰라
+  /// 두 번 분석한다(분당 10회 한도도 그만큼 깎이고 알림도 두 번 간다).
+  /// 시각이 없으면 발신자·본문의 지문만으로 만든다.
+  ///
+  /// 백엔드 상한은 100자이고, 이 값은 40자 안쪽이다.
   static String _clientMessageId(
-      String? sender, String content, DateTime receivedAt) {
-    final from = (sender == null || sender.isEmpty)
-        ? 'unknown'
-        : (sender.length > 40 ? sender.substring(0, 40) : sender);
-    return 'sms:${receivedAt.millisecondsSinceEpoch}:$from:${content.length}';
+      String? sender, String content, DateTime? deviceTime) {
+    final stamp = deviceTime?.millisecondsSinceEpoch.toString() ?? 'nodate';
+    return 'sms:$stamp:${_fingerprint('${sender ?? ''}|$content')}';
+  }
+
+  /// 문자 내용을 짧은 문자열로 접는다(FNV-1a 32비트).
+  ///
+  /// 암호용이 아니라 **같은 문자를 항상 같은 값으로** 만들기 위한 것이다.
+  /// `String.hashCode`를 쓰지 않는 이유는 그 값이 실행·플랫폼에 걸쳐 같다는
+  /// 보장이 없어서다 — 여기서는 isolate가 달라도 같아야 한다.
+  static String _fingerprint(String value) {
+    var hash = 0x811c9dc5;
+    for (final unit in value.codeUnits) {
+      hash = ((hash ^ unit) * 0x01000193) & 0xFFFFFFFF;
+    }
+    return hash.toRadixString(16).padLeft(8, '0');
   }
 }
 

@@ -129,7 +129,10 @@ class AnalysisApi {
                 'receivedAt': receivedAt.toUtc().toIso8601String(),
                 'source': source.wire,
               }))
-          .timeout(timeout ?? _timeout));
+          .timeout(timeout ?? _timeout),
+          // 401이 끼면 재발급 구간이 통째로 더 붙는다. 짧은 예산으로 부를 때는
+          // 그 구간도 같이 줄여야 예산 안에서 끝난다.
+          reissueTimeout: timeout);
       // 429: 분석 요청 한도 초과. 서버 안내 문구를 그대로 노출(단일 출처).
       if (res.statusCode == 429) {
         return AnalysisRequestOutcome.failure(
