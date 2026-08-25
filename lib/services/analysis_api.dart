@@ -694,6 +694,30 @@ class AnalysisResult {
   /// 점수·등급을 신뢰할 수 있는 상태인지(완료/부분성공).
   bool get hasResult => status.hasResult;
 
+  /// 화면·음성에 쓸 설명. **[explanation] 대신 이걸 쓴다.**
+  ///
+  /// 서버의 `explanation`은 AI 텍스트 분석의 `reason`을 그대로 옮긴 값이라
+  /// (`AnalysisResultApplyService.findExplanation`), 분석기가 폴백 경로를 타면
+  /// 영어 내부 문구가 들어온다 — "The confident stacking model decision was
+  /// used." 같은 것이 실제로 온다(SafeFam_AI `hybrid_analyzer.py`, 미수정).
+  ///
+  /// 증거 카드는 통째로 숨겼지만([EvidenceCard.isPresentable]) 이건 결과 화면의
+  /// **핵심 문장**이라 비워두면 안 된다. 그래서 한국어 안내로 갈아끼운다.
+  /// 특히 이 값은 **TTS로도 읽힌다** — 한국어 음성 엔진이 영어를 읽으면 고령층
+  /// 배려로 넣은 기능이 알아들을 수 없는 소리가 된다.
+  ///
+  /// 원본은 [explanation]에 그대로 남는다(디버깅·로그용).
+  String get displayExplanation {
+    final raw = explanation.trim();
+    if (raw.isEmpty) return '';
+    if (_hasHangul(raw)) return raw;
+    return '이 문자를 왜 그렇게 판단했는지 자세한 설명을 받지 못했어요. '
+        '아래 위험 근거와 점수를 함께 확인해 주세요.';
+  }
+
+  static final RegExp _hangulRe = RegExp(r'[가-힣]');
+  static bool _hasHangul(String s) => _hangulRe.hasMatch(s);
+
   /// 부분성공 배너에 쓸 **한국어 레이어명** 목록(중복 제거).
   ///
   /// 전용 필드 [failedTracks]를 우선 쓰고, 비어 있으면 예전처럼
@@ -755,7 +779,7 @@ class AnalysisResult {
       b.writeln('위험도: ${level.label}$score');
     }
     if (category != null) b.writeln('유형: ${category!.label}');
-    final ex = _redactPii(explanation.trim());
+    final ex = _redactPii(displayExplanation.trim());
     if (ex.isNotEmpty) b.writeln('\n$ex');
     b.write('\n\n※ SafeFam이 분석한 결과예요. 의심되면 링크·전화에 응하지 마세요.');
     return b.toString();
