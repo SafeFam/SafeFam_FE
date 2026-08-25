@@ -25,7 +25,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       character: true,
       icon: null,
       title: 'SafeFam이 가족을 지켜요',
-      desc: '문자와 전화 속 금융사기를 자동으로 찾아내\n위험할 때 바로 알려드려요.',
+      desc: '문자 속 금융사기를 AI가 찾아내\n위험할 때 바로 알려드려요.',
     ),
     _OnbData(
       character: false,

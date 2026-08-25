@@ -8,7 +8,7 @@
 (스플래시 → 온보딩) → **로그인**(휴대폰 번호 + 비밀번호 · 카카오) → 신규는 **회원가입**(휴대폰 인증 요청→확인 → 닉네임 + 비밀번호) → **가족 등록**(보호자/피보호자) → 보호자는 초대 코드 발급 → 연결 후 이름 설정 / 피보호자는 코드 입력 → 메인.
 > 진입점은 `main.dart`의 `_Bootstrap` — 저장된 세션과 온보딩 이력을 보고 **스플래시(판정 중) → 온보딩(최초 실행) / 로그인(미로그인) / 메인(세션 복원)**으로 분기한다. 로그인 화면의 '비밀번호를 잊으셨나요?' → **비밀번호 재설정**(휴대폰 인증 → 새 비밀번호). 로그인 실패 누적으로 **계정이 잠기면** 안내 후 **계정 잠금 해제**(휴대폰 인증 → `POST /auth/unlock`)로 풀 수 있음. **카카오로 계속하기** → 카카오 로그인, 신규회원이면 **카카오 온보딩**(휴대폰 인증 → 이름)으로 가입 후 가족 등록.
 > 구글 로그인은 **버튼을 내렸다** — 백엔드 엔드포인트가 없어 누르면 반드시 실패했다(#119). `AuthApi.socialLogin`의 `'google'` 분기는 서버가 생길 때를 위해 남겨뒀다.
-> 카카오 앱 키는 소스에 기본값이 있어 그냥 `flutter run`으로 동작한다. 다른 키로 바꿔 쓸 때만 주입: `flutter run --dart-define=KAKAO_NATIVE_APP_KEY=<네이티브 앱 키>` (AndroidManifest의 리다이렉트 스킴 값과 동일해야 함).
+> 카카오 앱 키는 소스에 있어 그냥 `flutter run`으로 동작한다. 키를 바꿀 땐 `lib/main.dart`의 `nativeAppKey`와 `AndroidManifest.xml`의 `com.kakao.sdk.AppKey`·리다이렉트 스킴(`kakao<앱키>://oauth`)을 **함께** 고쳐야 한다(한쪽만 바꾸면 로그인 콜백이 안 돌아온다).
 
 메인 하단 탭 **홈 · 이력 · 가족 · 검사** (설정=더보기는 홈 우상단 톱니바퀴로 진입).
 검사 탭 → 입력한 문자를 분석 API(`POST /api/v1/analyses`, source=MANUAL)로 접수(개인정보 마스킹은 서버가 처리) → 결과(**3중 스코어 게이지 + breakdown**). 분석은 **비동기**라 접수(202) 후 상세를 **종료 상태까지 폴링**하며 "분석 중"을 보여주고, 완료/부분 성공/실패에 따라 화면을 다르게 렌더한다(실패는 '안전'이 아니라 별도 안내). 요청 한도(분당) 초과 시 429 안내를 구분해 노출. 결과 → 대응 챗봇 시트 → 신고 시트 / 전화 / 공유.
@@ -63,7 +63,9 @@ lib/
     check_screen.dart  검사 탭(수동 분석 → analyses API 호출; 마스킹은 서버)
     results.dart       결과(3중 스코어 게이지) + AnalysisDetailScreen(이력 상세·폴링·삭제·피드백)
     history_screen.dart 이력(목록·통계·유형 필터·상세 이동)
-    family_screen.dart 가족 목록(getMembers·연결 해제·관계 설정) / more_screen.dart(설정)
+    family_screen.dart 가족 목록(getMembers·연결 해제·관계 설정)
+    family_alerts_screen.dart 가족 공동 대응(HIGH 알림·전화·안전 확인·이미 송금)
+    more_screen.dart   설정
   services/
     auth_api.dart      인증 API — 가입·로그인·로그아웃·잠금해제 + 마이페이지 users/me·설정 users/me/settings (401 자동 재발급)
     analysis_api.dart  문자 분석 API — 분석·이력·상세·삭제·피드백·통계·신고(analyses·statistics)
@@ -121,7 +123,7 @@ test/services/analysis_status_test.dart  분석 상태 파싱 회귀 테스트(�
 - **범위 제외** — 강제 오버레이 경고(`SYSTEM_ALERT_WINDOW`). 팀 착수 합의가 없어 계획에서 뺐다(2026-08-10). 관련 코드·화면은 남아 있지 않다.
 - **백엔드 없음** — 보이스피싱 음성 자동 탐지(Android 통화 녹음 API 제한) · URL 검사 전용 엔드포인트. 목업 화면으로 자리만 잡아두던 것을 지웠으므로(#119), 만들 때 화면부터 새로 붙인다.
 - **프론트 코드 품질(무백엔드)** — 상태 칩·이력 타일 공용 위젯 추출(history↔ward_logs 중복) · 상태관리(Provider/Riverpod) · 테스트 확대
-- **타 멤버/백엔드 미존재** — FCM 알림 수신 로직(타 멤버 담당) · **URL 검사 전용 백엔드는 아직 없다** — 링크 위험도는 분석 결과 안의 URL 카드로 대신 보여준다(별도 URL 검사 화면은 디버그 전용 목업)
+- **타 멤버/백엔드 미존재** — FCM 알림 수신 로직(타 멤버 담당) · **URL 검사 전용 백엔드는 아직 없다** — 링크 위험도는 분석 결과 안의 URL 카드로 대신 보여준다(별도 URL 검사 화면은 없다 — #119에서 목업을 삭제했다)
 - **AI 서버 영어 문구 노출**(타팀) — `hybrid_analyzer.py`가 만든 영어 `reason`이 결과 설명에 그대로 나온다. 서버가 만든 자유 문자열이라 프론트에서 막을 수 없다(자세한 내용은 `docs/ai-english-strings-handoff.md`)
 
 ## Firebase 설정 (FCM)

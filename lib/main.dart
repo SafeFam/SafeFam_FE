@@ -21,14 +21,14 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // 기본값은 AndroidManifest의 리다이렉트 스킴에 박힌 것과 **같은 키**여야 한다.
-  // 주입을 잊고 그냥 `flutter run`을 하면 빈 키로 초기화돼 카카오 로그인이
-  // 조용히 깨졌다(#119). 네이티브 앱 키는 APK에 실리는 반공개값이라 매니페스트와
-  // 함께 소스에 두는 것이 카카오 표준 관행이다.
-  const nativeAppKey = String.fromEnvironment(
-    'KAKAO_NATIVE_APP_KEY',
-    defaultValue: '824e7974984072aa3525884c029703d7',
-  );
+  // 카카오 네이티브 앱 키. AndroidManifest의 `com.kakao.sdk.AppKey`·리다이렉트
+  // 스킴(`kakao<앱키>://oauth`)과 **반드시 같은 값**이어야 로그인이 돌아온다.
+  //
+  // 예전엔 `--dart-define`으로 덮을 수 있게 뒀는데, 매니페스트는 그 값을 못 읽어
+  // 스킴이 옛 키로 남는다 — 다른 키를 주입하면 로그인 콜백이 조용히 깨지는
+  // 함정이었다. 키를 바꿀 땐 이 상수와 매니페스트를 같이 고친다. 네이티브 앱
+  // 키는 APK에 실리는 반공개값이라 소스에 두는 것이 카카오 표준 관행이다.
+  const nativeAppKey = '824e7974984072aa3525884c029703d7';
   await KakaoSdk.init(nativeAppKey: nativeAppKey);
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
