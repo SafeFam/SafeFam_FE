@@ -217,35 +217,16 @@ String _resultTitle(AnalysisResult r, RiskLevel level) {
   return level == RiskLevel.high ? '위험한 문자예요' : '주의가 필요한 문자예요';
 }
 
-/// result 미지정(오버레이 dev 프리뷰) 시 쓰는 데모 결과.
-final AnalysisResult _demoResult = AnalysisResult(
-  analysisId: 0,
-  status: AnalysisStatus.completed,
-  riskScore: 92,
-  riskLevel: RiskLevel.high,
-  category: PhishingCategory.governmentAgency,
-  explanation: '기관을 사칭해 겁을 주고, 안전계좌로 송금을 유도하는 수법이에요. 절대 응하지 마세요.',
-  scoreBreakdown:
-      const ScoreBreakdown(textScore: 92, urlScore: 100, rulesScore: 85),
-  indicators: const [
-    Indicator(type: IndicatorType.impersonation, description: '"검찰·수사관" 등 기관을 사칭'),
-    Indicator(type: IndicatorType.financialAction, description: '"안전계좌로 이체" 표현 감지'),
-    Indicator(type: IndicatorType.urgency, description: '"즉시·정지" 등 불안 유도'),
-  ],
-  urls: const [],
-  recommendedActions: const [],
-  analyzedAt: null,
-);
-
 /// 5 · 문자 탐지 결과 (3중 스코어 게이지).
 class ResultScreen extends StatefulWidget {
-  /// 분석 결과. null이면 데모 데이터로 렌더(오버레이 dev 프리뷰 호환).
-  final AnalysisResult? result;
+  /// 분석 결과. 예전에는 없으면 데모 데이터로 채웠지만, 가짜 결과가 진짜와
+  /// 똑같은 화면으로 나가는 통로였다(#119). 결과 없이는 이 화면을 열지 않는다.
+  final AnalysisResult result;
 
   /// 검사한 원문(수동 분석). 있으면 "받은 문자" 카드에 표시.
   final String? messageText;
 
-  const ResultScreen({super.key, this.result, this.messageText});
+  const ResultScreen({super.key, required this.result, this.messageText});
   @override
   State<ResultScreen> createState() => _ResultScreenState();
 }
@@ -255,10 +236,10 @@ class _ResultScreenState extends State<ResultScreen> {
   FeedbackType? _feedback; // 사용자가 남긴 피드백(선택 강조용)
   bool _busy = false; // 삭제/피드백 전송 중
 
-  AnalysisResult get _r => widget.result ?? _demoResult;
+  AnalysisResult get _r => widget.result;
 
   /// 서버에 저장된 이력(analysisId>0)이면 삭제·피드백을 노출한다.
-  bool get _isSaved => (widget.result?.analysisId ?? 0) > 0;
+  bool get _isSaved => widget.result.analysisId > 0;
 
   @override
   void dispose() {
@@ -789,121 +770,6 @@ class _AnalysisDetailScreenState extends State<AnalysisDetailScreen> {
                 variant: SfBtn.ghost,
                 onTap: _startPolling),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-/// 7 · 보이스피싱 결과.
-class VoiceResultScreen extends StatelessWidget {
-  const VoiceResultScreen({super.key});
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: _resultBar(context, '통화 분석'),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(18, 10, 18, 24),
-        children: [
-          Column(children: const [
-            CharacterDisc(142),
-            SizedBox(height: 12),
-            RiskBadge(RiskLevel.high),
-            SizedBox(height: 12),
-            Text('보이스피싱이에요', style: AppText.titleResult),
-          ]),
-          const _VoiceListenSection(
-              '보이스피싱이에요. 검찰 수사관을 사칭하며 안전계좌로 돈을 옮기라고 했어요. 진짜 수사기관은 이렇게 하지 않아요.'),
-          const SizedBox(height: 16),
-          SfCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
-                SectionLabel('방금 통화에서'),
-                Text('"검찰 수사관"을 사칭하며 안전계좌로 돈을 옮기라고 했어요. 진짜 수사기관은 이렇게 하지 않아요.',
-                    style: AppText.body),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          SfCard(
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: const [
-                Row(children: [
-                  Icon(Icons.phone_in_talk_outlined, color: AppColors.blue, size: 22),
-                  SizedBox(width: 10),
-                  Text('02-****-9930', style: AppText.bodyStrong),
-                ]),
-                Text('4분 12초', style: AppText.caption),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          _helpCard(context),
-        ],
-      ),
-    );
-  }
-}
-
-/// 8 · URL 검사 결과 (빨강 축소).
-class UrlResultScreen extends StatelessWidget {
-  const UrlResultScreen({super.key});
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: _resultBar(context, '링크 검사', share: false),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(18, 10, 18, 24),
-        children: [
-          Column(children: const [
-            CharacterDisc(142),
-            SizedBox(height: 12),
-            RiskBadge(RiskLevel.high, text: '위험 사이트'),
-          ]),
-          const _VoiceListenSection(
-              '위험한 사이트예요. 택배사를 흉내 낸 가짜 결제 페이지예요. 접속하거나 정보를 넣지 마세요.'),
-          const SizedBox(height: 16),
-          SfCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
-                SectionLabel('검사한 링크'),
-                Text('cj-delivery-check.top',
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.high)),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          SfCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: const [
-                    Text('검사 결과', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-                    Text('90곳 중 12곳 위험',
-                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.high)),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
-                  child: const LinearProgressIndicator(
-                      value: 0.13, minHeight: 11,
-                      backgroundColor: AppColors.track,
-                      valueColor: AlwaysStoppedAnimation(AppColors.high)),
-                ),
-                const SizedBox(height: 14),
-                const Text('택배사를 흉내 낸 가짜 결제 페이지예요. 접속하거나 정보를 넣지 마세요.',
-                    style: AppText.body),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          const SfButton('접속 차단하기', icon: Icons.block, variant: SfBtn.primary),
         ],
       ),
     );

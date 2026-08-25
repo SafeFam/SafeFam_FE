@@ -178,11 +178,9 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                           const SizedBox(height: 40),
                           _kakao(),
-                          const SizedBox(height: 12),
-                          SfButton('구글로 계속하기',
-                              icon: Icons.g_mobiledata,
-                              variant: SfBtn.ghost,
-                              onTap: _loading ? null : () => _social('google')),
+                          // 구글 로그인 버튼이 있었지만 백엔드 엔드포인트가 없어
+                          // 누르면 반드시 실패했다(#119). 서버가 생기면 되살린다
+                          // — AuthApi.socialLogin의 'google' 분기는 그대로 있다.
                   ],
                 ),
               ),

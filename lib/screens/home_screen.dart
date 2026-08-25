@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common.dart';
 import '../services/analysis_api.dart';
+import 'family_alerts_screen.dart';
 import 'more_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -142,8 +143,13 @@ class _HomeScreenState extends State<HomeScreen> {
                       fontWeight: FontWeight.w700,
                       color: AppColors.blue)),
               const Spacer(),
+              // 종은 '가족 안전 알림'으로 보낸다. 가족 탭 안쪽에만 있던 화면이라
+              // 홈에서 바로 닿지 않았고, 종 자체는 아무 동작도 없었다(#119).
               IconButton(
-                  onPressed: () {},
+                  onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const FamilyAlertsScreen())),
                   icon: const Icon(Icons.notifications_none,
                       color: AppColors.t1, size: 24)),
               IconButton(
