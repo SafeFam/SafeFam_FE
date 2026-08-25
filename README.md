@@ -126,6 +126,9 @@ test/services/analysis_status_test.dart  분석 상태 파싱 회귀 테스트(�
 - **검증 범위** — 목 서버 + 에뮬레이터/브라우저로 확인한 범위는 `docs/mock-verification-log.md`, **로컬 풀스택(Spring+FastAPI+RabbitMQ+PostgreSQL+Redis)으로 실제 분석까지 돌린 결과**와 출품 보고서 대조는 `docs/report-vs-reality.md`에 있다.
 - ⚠️ **BE 통계 API가 특정 기간에서 터진다** — `GET /statistics/overview?period=LAST_7_DAYS|LAST_30_DAYS`가 NPE로 실패하고 401 '인증이 필요합니다'로 뭉개져 나온다(`period=ALL`만 정상). **앱 기본값이 30일이라 이력 화면 통계가 항상 깨진다.** 프론트가 아니라 BE 수정 사항.
 - **온디바이스/실기기 필요** — 최근 머지분 E2E 검증(배포 서버 연결·가족 관계 저장·초대 코드 입력·챗봇) · 가족 QR 실기기 카메라 검증 · TTS 실제 음성 출력 검증 · 자동 탐지의 **실기기 Doze/절전 환경** 확인(에뮬레이터 수신 E2E는 통과 — 아래)
+  - ✅ **실기기 첫 실행 검증 완료**(갤럭시 S23 FE · SM-S711N · Android 16 · arm64, 2026-08-25) — 설치·부팅·온보딩 분기까지 정상. 여기서 **권한 팝업 두 개가 온보딩을 덮는 버그**를 찾아 고쳤다(이슈 #132 · PR #133): ①#118의 크래시 방지 호출이 타는 플러그인 메서드 `disableBackgroundService`가 네이티브 권한 요청 경로를 타서, 자동 탐지가 꺼져 있어도 첫 실행에 SMS 권한을 요구했다 ②신규 설치 때 FCM 첫 토큰 발급으로 `onTokenRefresh`가 불려 **로그인 전에** `registerDevice()`가 알림 권한을 요구하고 인증 없는 등록 요청을 보냈다. 둘 다 목 서버·에뮬레이터로는 드러나지 않던 것이다.
+  - 남은 실기기 항목은 **로그인이 있어야** 진행된다(실서버 계정 필요) — 실서버 분석 응답 대조(`evidenceCards` 실제 장수·`scoreBreakdown` 채움 여부·시연 문자가 HIGH인지) · 통계 NPE가 실서버에도 있는지 · TTS·QR·카카오.
+  - 이 기기는 **유심이 없어**(SIM `ABSENT`) 실제 문자 수신은 불가하다. 실기기에서 `SMS_RECEIVED`는 시스템 전용 보호 브로드캐스트라 `adb`로 쏠 수 없고(`adb emu sms send`는 에뮬레이터 전용), 자동 탐지 수신 검증은 **쓰는 유심을 꽂아야** 가능하다.
 - ⚠️ **`flutter test` 실행 불가(환경)** — Dart VM의 FFI 변환기가 크래시해(`ffi/use_sites.dart`) 테스트 스위트 로딩이 실패한다. 한글 경로와 무관하며 **앱 빌드·실행은 정상**. `test/services/analysis_status_test.dart`가 그동안 돌지 못한 상태다.
 - **범위 제외** — 강제 오버레이 경고(`SYSTEM_ALERT_WINDOW`). 팀 착수 합의가 없어 계획에서 뺐다(2026-08-10). 관련 코드·화면은 남아 있지 않다.
 - **백엔드 없음** — 보이스피싱 음성 자동 탐지(Android 통화 녹음 API 제한) · URL 검사 전용 엔드포인트. 목업 화면으로 자리만 잡아두던 것을 지웠으므로(#119), 만들 때 화면부터 새로 붙인다.
