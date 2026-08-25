@@ -452,9 +452,109 @@ class _Bubble extends StatelessWidget {
             bottomRight: Radius.circular(bot ? 16 : 5),
           ),
         ),
-        child: Text(text,
-            style: TextStyle(fontSize: 16, height: 1.55, color: bot ? AppColors.t1 : Colors.white)),
+        // 봇 답변만 마크다운을 풀어서 그린다. 사용자가 친 말은 평문이다.
+        child: bot
+            ? Text.rich(TextSpan(children: _botSpans(text, AppColors.t1)))
+            : Text(text,
+                style: const TextStyle(
+                    fontSize: 16, height: 1.55, color: Colors.white)),
       ),
     );
   }
+}
+
+// ── 챗봇 답변의 마크다운 처리 ──
+//
+// AI는 답변을 **마크다운으로** 준다(`# 제목`, `**굵게**`, `- 목록`, `---`).
+// 그대로 `Text`에 넣으면 기호가 글자로 새어 나온다(#134).
+//
+// `flutter_markdown`을 들이지 않는 이유: 코드블록·표·링크까지 제 스타일로
+// 그려서 디자인 토큰(§7)을 침범하고, 고령층 화면에 임의 서식이 끼어든다.
+// **실제로 오는 문법만** 골라 우리 타이포로 옮긴다.
+
+/// 구분선(`---`, `***`, `___`). 앞뒤 빈 줄이 이미 간격을 만들어 그냥 버린다.
+final RegExp _mdRule = RegExp(r'^\s{0,3}([-*_])\1{2,}\s*$');
+
+/// ATX 제목(`# ` ~ `###### `).
+final RegExp _mdHeading = RegExp(r'^\s{0,3}#{1,6}\s+(.*)$');
+
+/// 순서 없는 목록(`- `, `* `, `+ `).
+final RegExp _mdBullet = RegExp(r'^(\s*)[-*+]\s+(.*)$');
+
+/// 굵게(`**...**`). 한 줄 안에서만 닫히는 것만 본다.
+final RegExp _mdBold = RegExp(r'\*\*(.+?)\*\*');
+
+/// 인라인 코드 백틱 — 표시할 게 아니라 기호만 걷어낸다.
+final RegExp _mdCode = RegExp(r'`([^`]*)`');
+
+/// 마크다운 답변을 말풍선용 span으로 바꾼다.
+List<InlineSpan> _botSpans(String raw, Color color) {
+  final base = TextStyle(fontSize: 16, height: 1.55, color: color);
+  final strong = base.copyWith(fontWeight: FontWeight.w700);
+
+  final spans = <InlineSpan>[];
+  var pendingBlank = false; // 빈 줄은 하나로 모은다(구분선을 버리면 겹친다).
+  var wrote = false;
+
+  void newline() {
+    if (wrote) spans.add(TextSpan(text: '\n', style: base));
+  }
+
+  for (final rawLine in raw.split('\n')) {
+    final line = rawLine.trimRight();
+
+    if (_mdRule.hasMatch(line)) continue; // 구분선은 버린다.
+    if (line.trim().isEmpty) {
+      pendingBlank = wrote; // 첫 줄 앞의 빈 줄은 무시한다.
+      continue;
+    }
+    if (pendingBlank) {
+      newline();
+      newline();
+      pendingBlank = false;
+    } else {
+      newline();
+    }
+
+    final heading = _mdHeading.firstMatch(line);
+    if (heading != null) {
+      // 제목은 줄 전체를 굵게 — 크기는 키우지 않는다(본문 16 아래로도 위로도
+      // 흔들지 않는 게 §7 원칙이고, 말풍선 안에서 위계는 굵기로 충분하다).
+      spans.addAll(_inlineSpans(heading.group(1)!, strong, strong));
+      wrote = true;
+      continue;
+    }
+
+    final bullet = _mdBullet.firstMatch(line);
+    if (bullet != null) {
+      spans.add(TextSpan(text: '${bullet.group(1)}• ', style: base));
+      spans.addAll(_inlineSpans(bullet.group(2)!, base, strong));
+      wrote = true;
+      continue;
+    }
+
+    spans.addAll(_inlineSpans(line, base, strong));
+    wrote = true;
+  }
+
+  if (spans.isEmpty) spans.add(TextSpan(text: raw, style: base));
+  return spans;
+}
+
+/// 한 줄 안의 `**굵게**`를 풀고 백틱을 걷어낸다.
+List<InlineSpan> _inlineSpans(String line, TextStyle base, TextStyle strong) {
+  final text = line.replaceAllMapped(_mdCode, (m) => m.group(1)!);
+  final out = <InlineSpan>[];
+  var at = 0;
+  for (final m in _mdBold.allMatches(text)) {
+    if (m.start > at) {
+      out.add(TextSpan(text: text.substring(at, m.start), style: base));
+    }
+    out.add(TextSpan(text: m.group(1), style: strong));
+    at = m.end;
+  }
+  if (at < text.length) {
+    out.add(TextSpan(text: text.substring(at), style: base));
+  }
+  return out;
 }
