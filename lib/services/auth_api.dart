@@ -11,7 +11,8 @@ import 'app_prefs.dart';
 ///
 /// 백엔드(SafeFam_BE) 확인된 계약 (휴대폰 기반 확정, 2026-07-17 #26):
 ///  - context-path 없음 (배포 `https://api.safefam.site`; 로컬 주소는 아래 [baseUrl] 안내 참조)
-///  - 공통 응답 포맷 ApiResponse: { status: "SUCCESS"|"ERROR", message, data }
+///  - 공통 응답 포맷 ApiResponse: { status: "SUCCESS"|"ERROR", code, message, data }
+///    ※ `code`는 실패 응답에서만 채워지는 에러 식별자(SafeFam_BE #111).
 ///  - 토큰은 응답 바디로 옴(TokenResponse):
 ///      { tokenType:"Bearer", accessToken, refreshToken, expiresIn(초) }
 ///  - 인증 필요한 요청은 헤더 Authorization: Bearer <accessToken>
@@ -22,7 +23,8 @@ import 'app_prefs.dart';
 ///  - 계정 잠금(SafeFam_BE #42): 로그인 실패 누적 시 계정 잠김. 잠긴 계정 로그인
 ///    → HTTP 403 ACCOUNT_LOCKED(메시지 "…잠금을 해제해 주세요"). 해제는
 ///    POST /auth/unlock { phoneNumber } — 휴대폰 인증(verify) 선행 필요.
-///    ※ 에러 응답 바디에 코드가 없어 403+메시지('잠금')로 판별한다.
+///    ※ 판별은 403 + `code == "US002"`. 옛 서버(코드 미탑재) 대비로
+///      메시지('잠금') 폴백을 남겨둔다.
 ///
 /// 마이페이지 users/me (SafeFam_BE #39 구현 완료, 2026-07-20 소스 대조):
 ///  - GET    /api/v1/users/me → UserResponse
@@ -236,18 +238,26 @@ class AuthApi {
   }
 
   /// 로그인 실패 응답이 '계정 잠금'(ACCOUNT_LOCKED)인지 판별.
-  /// 백엔드 GlobalExceptionHandler가 바디에 에러코드를 싣지 않으므로,
-  /// HTTP 403 + 메시지 텍스트('잠금')로 잠금 상태를 구분한다.
+  ///
+  /// 백엔드가 에러 바디에 `code`를 싣기 시작해(SafeFam_BE #111) 잠금은
+  /// `US002`로 확정 판별한다. 다만 배포된 서버가 아직 옛 빌드일 수 있으므로
+  /// 코드가 없으면 예전 방식(403 + 메시지 '잠금')으로 물러선다.
   static bool _isLocked(http.Response res) {
     if (res.statusCode != 403 || res.body.isEmpty) return false;
     try {
       final body = jsonDecode(res.body);
-      final msg = body is Map<String, dynamic> ? body['message'] : null;
+      if (body is! Map<String, dynamic>) return false;
+      final code = body['code'];
+      if (code is String && code.isNotEmpty) return code == _lockedCode;
+      final msg = body['message'];
       return msg is String && msg.contains('잠금');
     } catch (_) {
       return false;
     }
   }
+
+  /// 계정 잠금 에러코드(ApiResponse.code). 백엔드 `ErrorCode.ACCOUNT_LOCKED`.
+  static const String _lockedCode = 'US002';
 
   /// 회원가입용 인증번호 발송. 성공 여부만 반환.
   static Future<bool> requestCode(String phone) async {
