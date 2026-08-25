@@ -68,46 +68,18 @@ class _MyPageScreenState extends State<MyPageScreen> {
 
   /// 이름 수정 다이얼로그 → PATCH /users/me.
   Future<void> _editName(String current) async {
-    final controller = TextEditingController(text: current);
     final newName = await showDialog<String>(
       context: context,
-      builder: (ctx) {
-        String? errorText;
-        return StatefulBuilder(
-          builder: (ctx, setInner) => AlertDialog(
-            title: const Text('이름 수정',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-            content: TextField(
-              controller: controller,
-              autofocus: true,
-              maxLength: 30,
-              style: const TextStyle(fontSize: 16),
-              decoration: InputDecoration(
-                hintText: '이름을 입력하세요',
-                errorText: errorText,
-              ),
-            ),
-            actions: [
-              TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('취소')),
-              TextButton(
-                onPressed: () {
-                  final v = controller.text.trim();
-                  if (v.isEmpty) {
-                    setInner(() => errorText = '이름을 입력해 주세요');
-                    return;
-                  }
-                  Navigator.pop(ctx, v);
-                },
-                child: const Text('저장'),
-              ),
-            ],
-          ),
-        );
-      },
+      builder: (_) => _TextPromptDialog(
+        title: '이름 수정',
+        hintText: '이름을 입력하세요',
+        initialText: current,
+        maxLength: 30,
+        trim: true,
+        emptyError: '이름을 입력해 주세요',
+        confirmLabel: '저장',
+      ),
     );
-    controller.dispose();
     if (newName == null || newName == current) return;
     final updated = await AuthApi.updateName(newName);
     if (updated == null) {
@@ -120,56 +92,19 @@ class _MyPageScreenState extends State<MyPageScreen> {
 
   /// 회원 탈퇴 — 본인 확인용 비밀번호 재입력 → DELETE /users/me.
   Future<void> _withdraw() async {
-    final controller = TextEditingController();
     final password = await showDialog<String>(
       context: context,
-      builder: (ctx) {
-        String? errorText;
-        return StatefulBuilder(
-          builder: (ctx, setInner) => AlertDialog(
-            title: const Text('회원 탈퇴',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                    '탈퇴하면 계정과 탐지 이력에 접근할 수 없어요.\n본인 확인을 위해 비밀번호를 입력해 주세요.',
-                    style: TextStyle(fontSize: 15, color: AppColors.t2)),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: controller,
-                  autofocus: true,
-                  obscureText: true,
-                  style: const TextStyle(fontSize: 16),
-                  decoration: InputDecoration(
-                    hintText: '비밀번호',
-                    errorText: errorText,
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('취소')),
-              TextButton(
-                onPressed: () {
-                  if (controller.text.isEmpty) {
-                    setInner(() => errorText = '비밀번호를 입력해 주세요');
-                    return;
-                  }
-                  Navigator.pop(ctx, controller.text);
-                },
-                child: const Text('탈퇴',
-                    style: TextStyle(color: AppColors.high)),
-              ),
-            ],
-          ),
-        );
-      },
+      builder: (_) => const _TextPromptDialog(
+        title: '회원 탈퇴',
+        description: '탈퇴하면 계정과 탐지 이력에 접근할 수 없어요.\n'
+            '본인 확인을 위해 비밀번호를 입력해 주세요.',
+        hintText: '비밀번호',
+        obscureText: true,
+        emptyError: '비밀번호를 입력해 주세요',
+        confirmLabel: '탈퇴',
+        confirmColor: AppColors.high,
+      ),
     );
-    controller.dispose();
     if (password == null) return;
     final ok = await AuthApi.withdraw(password);
     if (!ok) {
@@ -340,4 +275,116 @@ class _MyPageScreenState extends State<MyPageScreen> {
           ),
         ),
       );
+}
+
+/// 글자 하나를 받아 돌려주는 확인 다이얼로그(이름 수정·탈퇴 비밀번호 확인).
+///
+/// ★ 컨트롤러를 **이 위젯이 직접 소유**하는 것이 핵심이다. 예전에는 호출부에서
+/// [TextEditingController]를 만들고 `showDialog`가 반환되자마자 `dispose()`를
+/// 불렀는데, `showDialog`는 [Navigator.pop] 시점에 반환되는 반면 다이얼로그
+/// 라우트는 **퇴장 애니메이션이 끝날 때까지 살아 있다**. 그 사이 [TextField]가
+/// 이미 버려진 컨트롤러를 건드려 "A TextEditingController was used after being
+/// disposed"로 레드 스크린이 떴다. State가 소유하면 라우트가 완전히 사라진 뒤
+/// [State.dispose]가 불리므로 이 경합이 생기지 않는다.
+class _TextPromptDialog extends StatefulWidget {
+  const _TextPromptDialog({
+    required this.title,
+    required this.hintText,
+    required this.emptyError,
+    required this.confirmLabel,
+    this.description,
+    this.initialText = '',
+    this.obscureText = false,
+    this.maxLength,
+    this.trim = false,
+    this.confirmColor,
+  });
+
+  final String title;
+  final String hintText;
+
+  /// 입력이 비었을 때 필드 아래에 띄울 문구.
+  final String emptyError;
+  final String confirmLabel;
+
+  /// 제목과 입력 칸 사이에 들어갈 설명(없으면 생략).
+  final String? description;
+  final String initialText;
+  final bool obscureText;
+  final int? maxLength;
+
+  /// 앞뒤 공백을 털어서 돌려줄지. 이름처럼 사람이 읽는 값에만 쓴다
+  /// (비밀번호는 공백도 유효한 문자라 절대 손대지 않는다).
+  final bool trim;
+
+  /// 확인 버튼 색. 되돌릴 수 없는 동작(탈퇴)에 경고색을 준다.
+  final Color? confirmColor;
+
+  @override
+  State<_TextPromptDialog> createState() => _TextPromptDialogState();
+}
+
+class _TextPromptDialogState extends State<_TextPromptDialog> {
+  late final TextEditingController _controller =
+      TextEditingController(text: widget.initialText);
+  String? _errorText;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final value =
+        widget.trim ? _controller.text.trim() : _controller.text;
+    if (value.isEmpty) {
+      setState(() => _errorText = widget.emptyError);
+      return;
+    }
+    Navigator.pop(context, value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final field = TextField(
+      controller: _controller,
+      autofocus: true,
+      obscureText: widget.obscureText,
+      maxLength: widget.maxLength,
+      style: const TextStyle(fontSize: 16),
+      onSubmitted: (_) => _submit(),
+      decoration: InputDecoration(
+        hintText: widget.hintText,
+        errorText: _errorText,
+      ),
+    );
+
+    return AlertDialog(
+      title: Text(widget.title,
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+      content: widget.description == null
+          ? field
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(widget.description!,
+                    style: const TextStyle(fontSize: 15, color: AppColors.t2)),
+                const SizedBox(height: 12),
+                field,
+              ],
+            ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('취소')),
+        TextButton(
+          onPressed: _submit,
+          child: Text(widget.confirmLabel,
+              style: TextStyle(color: widget.confirmColor)),
+        ),
+      ],
+    );
+  }
 }
