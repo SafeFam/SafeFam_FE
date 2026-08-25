@@ -19,6 +19,12 @@ class DeviceApi {
   /// 로그인 성공 후 FCM 토큰 발급하고 서버에 기기 등록.
   /// 등록 응답의 deviceId를 저장해 두어야 로그아웃 때 해제할 수 있다.
   static Future<void> registerDevice() async {
+    // 로그인 상태가 아니면 등록할 기기가 없다. 이 가드가 없으면 **앱 최초
+    // 실행** 때 FCM 토큰이 처음 발급되며 `onTokenRefresh`가 불려, 아직 로그인도
+    // 안 한 사용자에게 알림 권한 팝업이 온보딩 위로 뜨고(#132) 인증 없는
+    // 등록 요청까지 나간다. 로그인·세션 복구 경로가 끝난 뒤 다시 부르므로
+    // 여기서 건너뛰어도 등록을 놓치지 않는다.
+    if (AuthApi.accessToken == null && AuthApi.refreshToken == null) return;
     try {
       final messaging = FirebaseMessaging.instance;
 

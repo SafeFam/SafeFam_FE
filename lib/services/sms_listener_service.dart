@@ -73,13 +73,29 @@ class SmsListenerService {
   /// **앱 프로세스가 죽는다**(`FlutterCallbackInformation`이 null → NPE).
   /// 그래서 감시하지 않을 때는 백그라운드 처리를 명시적으로 꺼둔다.
   ///
+  /// 단, **문자 수신 권한이 없으면 아무것도 하지 않는다.** 플러그인의 '꺼둠'
+  /// 호출(`disableBackgroundService`)이 네이티브에서 권한 요청 경로를 타서
+  /// (`SmsMethodCallHandler.checkOrRequestPermission`), 앱을 켜자마자 SMS 권한
+  /// 팝업이 온보딩 위로 덮이기 때문이다(#132). 권한이 없으면 앱은 애초에
+  /// `SMS_RECEIVED`를 받지 못해 매니페스트 수신기가 돌지 않으므로, 위에서 말한
+  /// 크래시도 일어나지 않는다 — 꺼둘 것이 없다. 권한 요청은 사용자가 더보기에서
+  /// 토글을 켤 때만 [requestPermission]으로 한다.
+  ///
   /// 앱 시작·로그인·설정 변경 등 여러 곳에서 불려도 안전하다 — 상태가 그대로면
   /// 아무것도 하지 않는다. 앱 시작 경로에서도 불리므로 **예외를 밖으로 내보내지
   /// 않는다**. 여기서 터지면 문자 감시가 아니라 앱 자체가 안 뜬다.
   static Future<void> start() async {
     try {
-      final wanted =
-          await AppPrefs.autoAnalysisEnabled() && await hasPermission();
+      if (!await hasPermission()) {
+        // 권한이 없으면 수신 자체가 오지 않으니 꺼둘 것도 없다. 여기서
+        // [_listening]을 건드리지 않는 것이 중요하다 — false로 굳히면 나중에
+        // 권한이 생겨도 아래 조기 반환에 걸려 '꺼둠' 동기화를 영영 건너뛰고,
+        // 플러그인 기본값이 '백그라운드 실행 허용'이라 #118 크래시가 되살아난다.
+        _log('문자 수신 권한이 없어 플러그인을 건드리지 않는다(수신 자체가 없음)');
+        return;
+      }
+
+      final wanted = await AppPrefs.autoAnalysisEnabled();
       if (_listening == wanted) return;
 
       if (wanted) {
