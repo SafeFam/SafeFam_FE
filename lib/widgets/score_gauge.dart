@@ -92,15 +92,22 @@ class BreakdownBar extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 5),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(6),
-            child: LinearProgressIndicator(
-              value: (v ?? 0) / 100,
-              minHeight: 10,
-              backgroundColor: AppColors.track,
-              valueColor: const AlwaysStoppedAnimation(AppColors.blue),
-            ),
-          ),
+          // 값이 없으면 **막대 자체를 그리지 않는다.** 빈 막대를 남기면 0점짜리와
+          // 똑같이 보여서, 숫자를 '—'로 비워둔 의미가 사라진다 — 못 돌린 검사가
+          // '0점이라 안전'처럼 읽히는 게 바로 이 위젯이 막으려던 것이다.
+          if (v != null)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: LinearProgressIndicator(
+                value: v / 100,
+                minHeight: 10,
+                backgroundColor: AppColors.track,
+                valueColor: const AlwaysStoppedAnimation(AppColors.blue),
+              ),
+            )
+          else
+            // 자리는 유지해 세 줄의 높이가 흔들리지 않게 한다.
+            const SizedBox(height: 10),
         ],
       ),
     );

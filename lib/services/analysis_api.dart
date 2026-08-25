@@ -547,6 +547,50 @@ class ScoreBreakdown {
       );
 }
 
+/// 사용자 언어로 정리한 위험 근거 카드(`evidenceCards`).
+///
+/// 서버가 `{category, title, description}`으로 내려준다. `title`·`description`은
+/// **이미 한국어 완성 문장**이라 프론트에서 다시 문구를 만들지 않는다 —
+/// 카테고리별 문구는 AI 쪽(`app/analysis/evidence.py`)이 정본이다.
+///
+/// 카테고리 5종: `INSTITUTION_IMPERSONATION`(기관 사칭)·`PERSONAL_INFO_REQUEST`
+/// (개인정보 요구)·`DANGEROUS_URL`(위험 URL)·`URGENCY_PRESSURE`(행동 압박)·
+/// `AI_JUDGMENT`(AI 판단).
+class EvidenceCard {
+  final String category;
+  final String title;
+  final String description;
+
+  const EvidenceCard({
+    required this.category,
+    required this.title,
+    required this.description,
+  });
+
+  factory EvidenceCard.fromJson(Map<String, dynamic> j) => EvidenceCard(
+        category: ((j['category'] as String?) ?? '').trim(),
+        title: ((j['title'] as String?) ?? '').trim(),
+        description: ((j['description'] as String?) ?? '').trim(),
+      );
+
+  /// 사용자에게 내보내도 되는 카드인지.
+  ///
+  /// ★`AI_JUDGMENT` 카드의 설명은 AI 텍스트 분석의 `reason`을 **그대로** 옮긴
+  /// 값이라, 분석기가 내부 상태를 적어 보낼 때가 있다 — "The confident stacking
+  /// model decision was used." 같은 영어 문구가 실제로 온다(SafeFam_AI
+  /// `hybrid_analyzer.py`, 미수정). 사용자 언어로 정리한 카드라는 계약을 못 지킨
+  /// 값이므로 내보내지 않는다.
+  ///
+  /// 판별은 **한글이 한 글자라도 있는지**로 한다. 이 서비스의 카드 문구는 전부
+  /// 한국어라, 영어 문구 목록을 쫓아다니는 것보다 이쪽이 덜 깨진다(AI가 새 내부
+  /// 문구를 추가해도 자동으로 걸린다).
+  bool get isPresentable =>
+      title.isNotEmpty && description.isNotEmpty && _hasHangul(description);
+
+  static final RegExp _hangul = RegExp(r'[가-힣]');
+  static bool _hasHangul(String s) => _hangul.hasMatch(s);
+}
+
 /// 판단에 사용된 위험 근거.
 class Indicator {
   final IndicatorType? type;
@@ -618,6 +662,13 @@ class AnalysisResult {
   /// 사용자에게 그대로 보여주지 않고 [failedLayerLabels]로 환원해 쓴다.
   final List<String> failedTracks;
   final ScoreBreakdown scoreBreakdown;
+
+  /// 사용자 언어로 정리된 위험 근거(서버 `evidenceCards`, 최대 5개).
+  ///
+  /// [indicators]와는 **다른 엔티티**다. indicators는 내부 신호 타입이고,
+  /// 이쪽은 그 신호를 사람이 읽을 문장으로 풀어 쓴 것이다.
+  final List<EvidenceCard> evidenceCards;
+
   final List<Indicator> indicators;
   final List<UrlThreat> urls;
   final List<RecommendedAction> recommendedActions;
@@ -633,6 +684,7 @@ class AnalysisResult {
     this.failureCode,
     this.failedTracks = const [],
     required this.scoreBreakdown,
+    this.evidenceCards = const [],
     required this.indicators,
     required this.urls,
     required this.recommendedActions,
@@ -680,6 +732,9 @@ class AnalysisResult {
           // 분석이 끝나기 전엔 통째로 없다. 0점이 아니라 '아직 모른다'가 맞다.
           : const ScoreBreakdown(
               textScore: null, urlScore: null, rulesScore: null),
+      evidenceCards: _parseList(j, 'evidenceCards', EvidenceCard.fromJson)
+          .where((c) => c.isPresentable)
+          .toList(growable: false),
       indicators: _parseList(j, 'indicators', Indicator.fromJson),
       urls: _parseList(j, 'urls', UrlThreat.fromJson),
       recommendedActions:
