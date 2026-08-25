@@ -31,13 +31,16 @@ import 'auth_api.dart' show AuthApi;
 ///   riskScore(0~100), riskLevel: LOW|MEDIUM|HIGH, category, explanation, failureCode?,
 ///   failedTracks[]  ← 부분성공 시 못 돌린 트랙(SafeFam_BE #82, 2026-08-08 추가).
 ///                     값은 영어·내부 엔진명(`URL:VIRUSTOTAL`)이라 그대로 노출 금지.
-///                     ※ BE 매퍼가 ANALYSIS_TRACK_FAILURE 지표 문자열을 파싱해 만드는
-///                       구조라, 필드가 비면 지표에서 뽑는 폴백을 유지한다.
+///                     ※ SafeFam_BE #111(2026-08-25)부터 BE가 ANALYSIS_TRACK_FAILURE
+///                       지표를 `indicators`에서 걸러내고 이 필드로만 내보낸다(설명도
+///                       접두사 없는 raw 토큰). 옛 서버·옛 레코드 대비로 지표에서
+///                       뽑는 폴백은 그대로 둔다.
 ///   scoreBreakdown{ textScore, urlScore, rulesScore },  ← 셋 다 nullable
 ///                   ※ SafeFam_BE #101(2026-08-14)에서 이름·의미가 함께 바뀌었다.
 ///                     llmScore→textScore · patternScore→rulesScore,
 ///                     값은 가중 기여도(weightedContributions)→원점수(rawScores).
-///   evidenceCards[{category,title,description}]  ← 같은 PR에서 추가(최대 5개). 아직 미사용.
+///   evidenceCards[{category,title,description}]  ← 같은 PR에서 추가(최대 5개).
+///                   결과 화면 '위험 근거' 카드로 렌더한다(results.dart).
 ///   indicators[{type,description}], urls[{originalUrl,resolvedUrl,suspicious}],
 ///   recommendedActions[{type,label,phoneNumber?,url?}], analyzedAt }
 ///   ※ 종료 전(PENDING/PROCESSING)·실패(FAILED)에는 riskScore·riskLevel·category·
