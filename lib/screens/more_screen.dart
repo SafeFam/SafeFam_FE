@@ -18,7 +18,7 @@ class MoreScreen extends StatefulWidget {
   State<MoreScreen> createState() => _MoreScreenState();
 }
 
-class _MoreScreenState extends State<MoreScreen> {
+class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
   // 접근성 설정. 앱 시작 시 AppSettings.load()로 복구된 값을 initState에서 읽는다.
   bool _big = false;
   bool _voice = true;
@@ -36,9 +36,37 @@ class _MoreScreenState extends State<MoreScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _big = AppSettings.instance.bigText.value;
     _voice = AppSettings.instance.voice.value;
     _loadSettings();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// 앱이 다시 앞으로 나올 때 문자 권한을 다시 확인한다.
+  ///
+  /// 권한을 '다시 묻지 않음'으로 거부한 사용자는 시스템 설정에서만 켤 수 있는데,
+  /// 거기서 켜고 돌아와도 이 화면은 아무것도 모른 채 "권한 없음" 안내를 계속
+  /// 띄우고 있었다. 권한이 빠졌을 때도 마찬가지라, 돌아올 때마다 실제 상태를
+  /// 다시 읽고 감시도 그에 맞춘다.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    _refreshPermission();
+  }
+
+  Future<void> _refreshPermission() async {
+    final granted = await SmsListenerService.hasPermission();
+    // 권한이 새로 생겼거나 사라졌으면 감시 상태도 다시 맞춘다. 설정 자체는
+    // 건드리지 않는다 — 권한이 생겼다고 자동 탐지가 켜지는 건 아니다.
+    await SmsListenerService.start();
+    if (!mounted || granted == _smsPermission) return;
+    setState(() => _smsPermission = granted);
   }
 
   Future<void> _loadSettings() async {

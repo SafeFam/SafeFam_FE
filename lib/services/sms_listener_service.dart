@@ -105,6 +105,26 @@ class SmsListenerService {
 
   static void _ignore(SmsMessage _) {}
 
+  /// 서버 설정을 받아 기기 사본과 감시 상태를 맞춘다. **로그인·자동 로그인
+  /// 직후**에 부른다.
+  ///
+  /// 세션이 끝날 때 기기 사본을 꺼버리기 때문에(#122 — 다음 사람이 물려받지
+  /// 못하게), 다시 로그인한 사용자에게는 그 사람의 설정을 서버에서 되살려 줘야
+  /// 한다. 그러지 않으면 더보기 화면에 들어가기 전까지 자동 탐지가 켜져 있다고
+  /// 표시되면서 실제로는 아무 문자도 검사되지 않는다.
+  ///
+  /// 화면을 막지 않도록 기다리지 않고 던져두는 용도이므로 실패해도 조용히
+  /// 넘어간다(다음 더보기 방문이 어차피 다시 맞춘다).
+  static Future<void> syncFromServer() async {
+    try {
+      final settings = await AuthApi.getSettings();
+      await AppPrefs.setAutoAnalysisEnabled(settings.autoAnalysisEnabled);
+      await start();
+    } catch (e) {
+      _log('서버 설정을 못 받아 감시 상태를 그대로 둔다: $e');
+    }
+  }
+
   /// 수신 문자 한 통을 처리한다.
   ///
   /// [restoreSession]은 백그라운드 isolate에서만 true다. 그쪽은 [AuthApi]의

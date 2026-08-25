@@ -113,8 +113,13 @@ class _BootstrapState extends State<_Bootstrap> {
     _Entry entry;
     try {
       final restored = await AuthApi.restoreSession();
-      // 자동 로그인 성공 시 FCM 기기 재등록(백그라운드, 실패해도 무방).
-      if (restored) DeviceApi.registerDevice();
+      // 자동 로그인 성공 시 FCM 기기를 재등록하고, 이 계정의 자동 탐지 설정을
+      // 서버에서 되살린다(세션이 끝날 때 기기 사본을 꺼두기 때문 — #122).
+      // 둘 다 화면을 막지 않도록 기다리지 않는다.
+      if (restored) {
+        DeviceApi.registerDevice();
+        SmsListenerService.syncFromServer();
+      }
       // 자동 로그인된 사용자는 이미 가입을 마친 상태라 온보딩을 다시 묻지 않는다.
       // 그 외에는 '확실한 최초 실행'(false)일 때만 온보딩을 띄우고, 저장소를
       // 못 읽어 판단이 불가능하면(null) 로그인으로 보낸다.

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/device_api.dart';
+import '../services/sms_listener_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common.dart';
 import '../services/auth_api.dart';
@@ -35,6 +36,9 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!mounted) return;
     // FCM 기기 등록 (백그라운드로 처리)
     DeviceApi.registerDevice();
+    // 이 계정의 자동 탐지 설정을 서버에서 되살린다(로그아웃 때 기기 사본을
+    // 껐으므로 — #122). 마찬가지로 기다리지 않는다.
+    SmsListenerService.syncFromServer();
 
     final Widget next;
     if (r.isNewUser && r.kakaoAccessToken != null) {
