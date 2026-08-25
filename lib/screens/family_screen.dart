@@ -13,16 +13,17 @@ class FamilyScreen extends StatefulWidget {
   State<FamilyScreen> createState() => _FamilyScreenState();
 }
 
-/// 가족 한 명. 표시 이름은 서버가 보관하는 관계(relationship)를 쓴다.
+/// 가족 한 명. 상대 역할에 따라 관계명 또는 가입 이름을 표시한다.
 class _MemberVM {
   final FamilyMember member;
   const _MemberVM(this.member);
 
-  /// 관계 → 피보호자 닉네임 → 전화번호 순. 셋 다 없으면 '가족'.
+  /// 관계명 또는 상대 가족의 이름·전화번호. 모두 없으면 '가족'.
   String get title => member.displayName ?? '가족';
 
-  /// 이름을 아직 정하지 않은 상태(관계 미설정)인지.
-  bool get unnamed => (member.relationship?.trim().isEmpty ?? true);
+  /// 보호자가 피보호자의 관계명을 아직 정하지 않았는지.
+  bool get unnamed => member.canManageRelationship &&
+      (member.relationship?.trim().isEmpty ?? true);
 }
 
 class _FamilyScreenState extends State<FamilyScreen> {
@@ -62,6 +63,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
   Future<bool> _migrateLocalNames(List<FamilyMember> members) async {
     var uploaded = false;
     for (final m in members) {
+      if (!m.canManageRelationship) continue;
       final local = await AppPrefs.familyName(m.linkId);
       if (local == null || local.trim().isEmpty) continue;
       final hasServerName = (m.relationship?.trim().isNotEmpty ?? false);
@@ -104,6 +106,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
 
   /// 피보호자 탐지 이력(원격 모니터링) 화면으로. wardId가 없으면(방어) 무시.
   void _openLogs(_MemberVM vm) {
+    if (!vm.member.canViewWardLogs) return;
     final wardId = vm.member.wardId;
     if (wardId == null) return;
     Navigator.push(
@@ -141,9 +144,16 @@ class _FamilyScreenState extends State<FamilyScreen> {
   }
 
   Widget _memberRow(_MemberVM vm) {
-    final canViewLogs = vm.member.wardId != null;
-    // 이름을 정했으면 보조줄에 번호를, 아직이면 설정을 유도하는 문구를 쓴다.
-    final sub = vm.unnamed ? '이름 설정 안 함' : (vm.member.wardPhone ?? '보호 중');
+    final canViewLogs = vm.member.canViewWardLogs;
+    final roleText = switch (vm.member.memberRole) {
+      FamilyMemberRole.protector => '나를 보호하는 가족',
+      FamilyMemberRole.ward => '보호 중',
+      FamilyMemberRole.unknown => '연결된 가족',
+    };
+    final phone = vm.member.memberPhone?.trim();
+    final sub = vm.unnamed
+        ? '이름 설정 안 함'
+        : [if (phone != null && phone.isNotEmpty) phone, roleText].join(' · ');
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: SfCard(
@@ -177,9 +187,11 @@ class _FamilyScreenState extends State<FamilyScreen> {
                 if (v == 'rename') _rename(vm);
                 if (v == 'revoke') _revoke(vm);
               },
-              itemBuilder: (_) => const [
-                PopupMenuItem(value: 'rename', child: Text('이름 설정')),
-                PopupMenuItem(value: 'revoke', child: Text('연결 해제')),
+              itemBuilder: (_) => [
+                if (vm.member.canManageRelationship)
+                  const PopupMenuItem(
+                      value: 'rename', child: Text('이름 설정')),
+                const PopupMenuItem(value: 'revoke', child: Text('연결 해제')),
               ],
             ),
           ],
@@ -281,7 +293,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                 child: ListView(
                   padding: const EdgeInsets.fromLTRB(18, 2, 18, 18),
                   children: [
-                    const SectionLabel('보호 중인 가족'),
+                    const SectionLabel('연결된 가족'),
                     for (final vm in members) _memberRow(vm),
                   ],
                 ),

@@ -9,7 +9,7 @@ import 'auth_api.dart' show AuthApi;
 ///
 /// 백엔드(SafeFam_BE) 확인된 계약 (develop 소스 대조, 2026-07-26):
 ///  - 모두 보호된 API → AuthApi.sendAuthorized 경유(401이면 토큰 재발급 후 재시도)
-///  - 공통 응답 ApiResponse { status:"SUCCESS"|"ERROR", message, data }
+///  - 공통 응답 ApiResponse { status:"SUCCESS"|"ERROR", code, message, data }
 ///
 ///  /api/v1/family
 ///   - POST /invite      (보호자, 바디 없음) → 201
@@ -18,20 +18,19 @@ import 'auth_api.dart' show AuthApi;
 ///   - POST /link/code   (피보호자) { inviteCode(\d{6}) } → 200
 ///   - POST /link/qr     (피보호자) { qrToken(≤64) } → 200   ※ QR은 후속 이슈
 ///   - DELETE /{linkId}  (양측)                        → 204 (ApiResponse 래핑 없음)
-///   - GET  /members     (보호자)                      → List<FamilyMemberResponse>
-///        { linkId, wardId, wardName, wardPhone, relationship,
-///          status(PENDING|ACTIVE|REVOKED), linkedAt }
-///        ※ ACTIVE만 내려오며 wardPhone은 마스킹 없이 옴.
-///        ※ `wardName`은 피보호자의 `User.name`(가입 때 받은 이름). 미설정이면 null.
-///          (SafeFam_BE #97에서 옛 이름 `wardNickname`을 대체했다.)
+///   - GET  /members     (보호자·피보호자 공통)          → List<FamilyMemberResponse>
+///        { linkId, memberId, memberName, memberPhone,
+///          memberRole(PROTECTOR|WARD), wardId, wardName, wardPhone,
+///          relationship, status(PENDING|ACTIVE|REVOKED), linkedAt }
+///        ※ ACTIVE만 내려오며 `member*`는 로그인 사용자의 상대 가족 정보다.
+///        ※ `ward*`는 기존 보호자 화면 호환용으로 유지된다(SafeFam_BE #112).
 ///   - PATCH /{linkId}   (보호자) { relationship } → 200 (SafeFam_BE #92·#93)
 ///        관계(별명) 저장. 최대 20자, null이면 해제. 남의 링크면 403.
 ///
-///  에러: 응답 바디에 에러코드는 없고 message만 있다(AuthApi와 동일 관례).
+///  에러: 공통 응답에 code가 포함되며, 현재 사용자 안내는 message를 쓴다.
 ///   FA001 404(잘못된 코드)·FA002 422(만료)·FA003 404(링크 없음)·
 ///   FA004 403(권한 없음)·FA005 422(자기 연결). → status + 서버 message로 안내.
 ///
-///  ※ 피보호자가 '내 보호자'를 조회하는 엔드포인트는 없다.
 class FamilyApi {
   static const Duration _timeout = Duration(seconds: 10);
 
@@ -110,7 +109,8 @@ class FamilyApi {
     }
   }
 
-  /// 연결된 가족(피보호자) 목록 조회(보호자). 실패 시 null, 없으면 빈 목록.
+  /// 로그인 사용자가 보호자 또는 피보호자로 연결된 가족 목록.
+  /// 실패 시 null, 연결이 없으면 빈 목록을 반환한다.
   static Future<List<FamilyMember>?> getMembers() async {
     try {
       final res = await AuthApi.sendAuthorized((headers) => http
@@ -210,6 +210,19 @@ enum FamilyLinkStatus {
       };
 }
 
+/// 현재 로그인 사용자를 기준으로 한 상대 가족의 역할.
+enum FamilyMemberRole {
+  protector,
+  ward,
+  unknown;
+
+  static FamilyMemberRole fromWire(String? v) => switch (v) {
+        'PROTECTOR' => FamilyMemberRole.protector,
+        'WARD' || null => FamilyMemberRole.ward,
+        _ => FamilyMemberRole.unknown,
+      };
+}
+
 /// 초대 코드/QR 토큰 발급 결과.
 class FamilyInvite {
   final String inviteCode;
@@ -234,10 +247,13 @@ class FamilyInvite {
 /// 연결된 가족 한 명.
 class FamilyMember {
   final int linkId;
-  final int? wardId;
+  final int? memberId;
+  final String? memberName;
+  final String? memberPhone;
+  final FamilyMemberRole memberRole;
 
-  /// 피보호자가 가입 때 등록한 이름(서버 `User.name`).
-  /// 보호자가 관계를 따로 정하지 않았을 때 [displayName]이 이걸 쓴다.
+  /// 보호자 화면의 기존 응답 호환용 피보호자 필드.
+  final int? wardId;
   final String? wardName;
   final String? wardPhone;
 
@@ -249,6 +265,10 @@ class FamilyMember {
   const FamilyMember({
     required this.linkId,
     required this.status,
+    required this.memberRole,
+    this.memberId,
+    this.memberName,
+    this.memberPhone,
     this.wardId,
     this.wardName,
     this.wardPhone,
@@ -256,24 +276,42 @@ class FamilyMember {
     this.linkedAt,
   });
 
-  /// 목록·알림에서 쓸 표시 이름. 보호자가 정한 관계를 가장 먼저 쓰고,
-  /// 없으면 피보호자 이름 → 전화번호 순으로 내려간다. 셋 다 없으면 null.
+  bool get canViewWardLogs =>
+      memberRole == FamilyMemberRole.ward && wardId != null;
+
+  bool get canManageRelationship => memberRole == FamilyMemberRole.ward;
+
+  /// 보호자는 자신이 설정한 관계명을 우선하고, 피보호자는 보호자의 실제
+  /// 이름을 표시한다. 따라서 보호자가 피보호자에게 설정한 관계명이
+  /// 피보호자 화면의 보호자 이름으로 잘못 노출되지 않는다.
   String? get displayName {
-    for (final v in [relationship, wardName, wardPhone]) {
+    final candidates = memberRole == FamilyMemberRole.ward
+        ? [relationship, memberName, memberPhone]
+        : [memberName, memberPhone];
+    for (final v in candidates) {
       if (v != null && v.trim().isNotEmpty) return v.trim();
     }
     return null;
   }
 
-  factory FamilyMember.fromJson(Map<String, dynamic> json) => FamilyMember(
-        linkId: (json['linkId'] as num?)?.toInt() ?? 0,
-        wardId: (json['wardId'] as num?)?.toInt(),
-        wardName: json['wardName'] as String?,
-        wardPhone: json['wardPhone'] as String?,
-        relationship: json['relationship'] as String?,
-        status: FamilyLinkStatus.fromWire(json['status'] as String?),
-        linkedAt: DateTime.tryParse('${json['linkedAt']}')?.toLocal(),
-      );
+  factory FamilyMember.fromJson(Map<String, dynamic> json) {
+    final wardId = (json['wardId'] as num?)?.toInt();
+    final wardName = json['wardName'] as String?;
+    final wardPhone = json['wardPhone'] as String?;
+    return FamilyMember(
+      linkId: (json['linkId'] as num?)?.toInt() ?? 0,
+      memberId: (json['memberId'] as num?)?.toInt() ?? wardId,
+      memberName: json['memberName'] as String? ?? wardName,
+      memberPhone: json['memberPhone'] as String? ?? wardPhone,
+      memberRole: FamilyMemberRole.fromWire(json['memberRole'] as String?),
+      wardId: wardId,
+      wardName: wardName,
+      wardPhone: wardPhone,
+      relationship: json['relationship'] as String?,
+      status: FamilyLinkStatus.fromWire(json['status'] as String?),
+      linkedAt: DateTime.tryParse('${json['linkedAt']}')?.toLocal(),
+    );
+  }
 }
 
 /// 연결 수락 결과(성공 또는 사용자 노출용 실패 사유).
