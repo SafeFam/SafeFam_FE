@@ -209,6 +209,19 @@ IconData _indicatorIcon(IndicatorType? t) => switch (t) {
       null => Icons.info_outline,
     };
 
+/// 근거 카드 아이콘. 서버 `evidenceCards[].category` 5종에 대응한다
+/// (SafeFam_AI `app/analysis/evidence.py`가 정본). 모르는 값이 와도 카드 자체는
+/// 보여줘야 하므로 기본 아이콘으로 떨어뜨린다 — AI가 카테고리를 늘려도 문장은
+/// 이미 한국어로 완성돼 오기 때문에 그대로 읽힌다.
+IconData _evidenceIcon(String category) => switch (category) {
+      'INSTITUTION_IMPERSONATION' => Icons.account_balance,
+      'PERSONAL_INFO_REQUEST' => Icons.badge_outlined,
+      'DANGEROUS_URL' => Icons.dangerous_outlined,
+      'URGENCY_PRESSURE' => Icons.notifications_active,
+      'AI_JUDGMENT' => Icons.psychology_outlined,
+      _ => Icons.info_outline,
+    };
+
 /// 결과 제목. 위험도·피싱 유형으로 문장을 만든다(결과가 있는 상태에서만 호출).
 String _resultTitle(AnalysisResult r, RiskLevel level) {
   if (level == RiskLevel.low) return '안전한 문자예요';
@@ -384,6 +397,45 @@ class _ResultScreenState extends State<ResultScreen> {
               ],
             ),
           ),
+          // 위험 근거 카드 — 서버가 사용자 언어로 정리해 보내준 문장 그대로.
+          // 아래 '이런 신호가 잡혔어요'(indicators)는 내부 신호 타입을 라벨로
+          // 옮긴 것이라 둘은 다른 층위다. 사람이 읽을 문장을 먼저 보여준다.
+          if (r.evidenceCards.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            SfCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SectionLabel('이렇게 판단했어요'),
+                  for (final card in r.evidenceCards)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 9),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(_evidenceIcon(card.category),
+                              color: level.color, size: 20),
+                          const SizedBox(width: 9),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(card.title,
+                                    style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600)),
+                                const SizedBox(height: 2),
+                                Text(card.description, style: AppText.body),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
           // 위험 근거
           if (riskSignals.isNotEmpty) ...[
             const SizedBox(height: 12),

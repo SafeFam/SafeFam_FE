@@ -43,7 +43,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       character: true,
       icon: null,
       title: '개인정보는 안전해요',
-      desc: '이름·번호 같은 정보는 분석 전에 가려서 처리하고,\n믿을 수 있는 번호는 검사 없이 통과시켜요.',
+      desc: '전화·계좌·카드번호는 분석 전에 가려서 처리하고,\n믿을 수 있는 번호는 검사 없이 통과시켜요.',
     ),
   ];
 

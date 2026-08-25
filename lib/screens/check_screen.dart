@@ -114,7 +114,12 @@ class _CheckScreenState extends State<CheckScreen> {
                       Icon(Icons.lock_outline, color: AppColors.blue, size: 20),
                       SizedBox(width: 9),
                       Expanded(
-                          child: Text('붙여넣은 내용은 이름·번호를 가린 뒤 안전하게 분석돼요.',
+                          // 서버가 실제로 가리는 건 번호류(주민·카드·전화·계좌)와
+                          // 이메일뿐이다. 이름은 안 가리고, 링크는 검사에 필요해
+                          // 일부러 남긴다(SafeFam_BE PiiMaskingService). 가리지도
+                          // 않는 걸 가린다고 적으면 그게 곧 거짓 약속이라 실제
+                          // 동작대로 적는다(#119에서 방침도 같은 이유로 고쳤다).
+                          child: Text('붙여넣은 내용은 전화·계좌·카드번호를 가린 뒤 분석돼요.',
                               style: AppText.caption)),
                     ],
                   ),
