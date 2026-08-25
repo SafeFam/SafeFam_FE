@@ -351,7 +351,7 @@ class _ConnectNamingScreenState extends State<ConnectNamingScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final phone = widget.member.wardPhone ?? '번호 없음';
+    final phone = widget.member.memberPhone ?? '번호 없음';
     // 연결 직후 진입인지, 목록에서 이름을 고치러 온 것인지에 따라 문구를 바꾼다.
     final isEdit = (widget.member.relationship?.trim().isNotEmpty ?? false);
     return Scaffold(
