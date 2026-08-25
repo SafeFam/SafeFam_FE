@@ -155,11 +155,27 @@ class AuthApi {
   /// 새 토큰을 저장하지 않는다(로그아웃이 재발급에 되돌려지는 것을 막는다).
   static int _sessionGeneration = 0;
 
-  /// 재발급을 single-flight으로 실행한다. 이미 진행 중이면 그 결과를 기다린다
-  /// (그 경우 [timeout]은 먼저 시작한 쪽의 값을 따른다).
-  static Future<ReissueOutcome> _refreshOnce({Duration? timeout}) =>
-      _refreshing ??=
-          reissue(timeout: timeout).whenComplete(() => _refreshing = null);
+  /// 재발급을 single-flight으로 실행한다. 이미 진행 중이면 그 결과를 기다린다.
+  ///
+  /// [timeout]은 **호출자가 기다리는 시간**만 줄인다. 재발급 요청 자체와 예약
+  /// ([_refreshing])은 그대로 살아 있다.
+  ///
+  /// 둘을 같이 줄이면 안 된다. `Future.timeout`은 진행 중인 http 요청을 **취소
+  /// 하지 못한다** — 기다리기를 그만둘 뿐이다. 그런데 예약까지 같이 풀어버리면,
+  /// 첫 요청이 아직 날아가고 있는 동안 다음 401이 **같은 리프레시 토큰으로 두
+  /// 번째 재발급**을 시작한다. 리프레시는 1회용(회전)이라 백엔드가 이걸 탈취로
+  /// 보고 세션을 끊는다(SafeFam_BE #56) — 빨리 포기하려다 오히려 로그아웃을
+  /// 부르는 셈이다. 그래서 예약은 실제 요청이 끝날 때까지 유지한다.
+  ///
+  /// 늦게 도착한 성공은 버려지지 않는다. 원래 요청이 끝나면 [_saveTokens]가
+  /// 새 토큰을 저장하므로, 다음 요청이 그걸 그대로 쓴다.
+  static Future<ReissueOutcome> _refreshOnce({Duration? timeout}) {
+    final pending =
+        _refreshing ??= reissue().whenComplete(() => _refreshing = null);
+    if (timeout == null) return pending;
+    return pending.timeout(timeout,
+        onTimeout: () => ReissueOutcome.unreachable);
+  }
 
   /// 보호된 요청 공통 경로.
   ///
@@ -540,8 +556,9 @@ class AuthApi {
   /// ([ReissueOutcome] 설명 참고). 둘을 하나로 뭉개면 네트워크가 느렸을 뿐인데
   /// 세션이 날아간다.
   ///
-  /// [timeout]은 시간 예산이 짧은 경로(문자 수신 처리)에서 줄여 쓴다.
-  static Future<ReissueOutcome> reissue({Duration? timeout}) async {
+  /// 시간 예산이 짧은 경로(문자 수신 처리)는 [_refreshOnce]의 `timeout`으로
+  /// **기다리는 시간만** 줄인다. 여기서 전송을 끊으면 안 된다(그 설명 참고).
+  static Future<ReissueOutcome> reissue() async {
     // 이 재발급이 시작된 시점의 세션 세대. 진행 중 로그아웃/탈퇴로 토큰이
     // 폐기되면 세대가 바뀌어, 완료돼도 새 세션을 저장하지 않는다.
     final generation = _sessionGeneration;
@@ -564,7 +581,7 @@ class AuthApi {
       final res = await http
           .post(_uri('/api/v1/auth/reissue'),
               headers: _headers(), body: jsonEncode({'refreshToken': stored}))
-          .timeout(timeout ?? _timeout);
+          .timeout(_timeout);
       // 5xx는 서버가 우리 토큰을 판단한 게 아니라 서버가 아픈 것이다. 그걸로
       // 세션을 버리면 서버 장애가 전체 로그아웃이 된다.
       if (res.statusCode >= 500) return ReissueOutcome.unreachable;
