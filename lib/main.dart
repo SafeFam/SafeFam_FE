@@ -113,9 +113,9 @@ class _BootstrapState extends State<_Bootstrap> {
     _Entry entry;
     try {
       final restored = await AuthApi.restoreSession();
-      // 자동 로그인 성공 시 FCM 기기 재등록(백그라운드, 실패해도 무방).
-      // 자동 로그인 성공 시 이 계정의 자동 탐지 설정도 서버에서 되살린다
-      // (세션이 끝날 때 기기 사본을 꺼두기 때문 — #122). 둘 다 기다리지 않는다.
+      // 자동 로그인 성공 시 FCM 기기를 재등록하고, 이 계정의 자동 탐지 설정을
+      // 서버에서 되살린다(세션이 끝날 때 기기 사본을 꺼두기 때문 — #122).
+      // 둘 다 화면을 막지 않도록 기다리지 않는다.
       if (restored) {
         DeviceApi.registerDevice();
         SmsListenerService.syncFromServer();
