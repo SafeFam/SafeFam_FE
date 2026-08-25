@@ -144,7 +144,7 @@ class AuthApi {
   /// 진행 중인 재발급. refreshToken은 1회용(회전)이라 동시에 두 번 호출하면
   /// 백엔드가 재사용을 탈취로 간주해 세션을 끊는다(SafeFam_BE #56).
   /// 그래서 동시에 401을 받은 요청들이 하나의 재발급 결과를 공유하게 한다.
-  static Future<bool>? _refreshing;
+  static Future<ReissueOutcome>? _refreshing;
 
   /// 세션 만료 통보는 한 번만. 동시에 여러 요청이 실패해도 로그인 화면이
   /// 여러 번 밀려 올라가지 않게 한다. 재로그인(=토큰 저장) 시 풀린다.
@@ -155,10 +155,27 @@ class AuthApi {
   /// 새 토큰을 저장하지 않는다(로그아웃이 재발급에 되돌려지는 것을 막는다).
   static int _sessionGeneration = 0;
 
-  /// 재발급을 single-flight으로 실행한다. 이미 진행 중이면 그 결과를 기다린다
-  /// (그 경우 [timeout]은 먼저 시작한 쪽의 값을 따른다).
-  static Future<bool> _refreshOnce({Duration? timeout}) => _refreshing ??=
-      reissue(timeout: timeout).whenComplete(() => _refreshing = null);
+  /// 재발급을 single-flight으로 실행한다. 이미 진행 중이면 그 결과를 기다린다.
+  ///
+  /// [timeout]은 **호출자가 기다리는 시간**만 줄인다. 재발급 요청 자체와 예약
+  /// ([_refreshing])은 그대로 살아 있다.
+  ///
+  /// 둘을 같이 줄이면 안 된다. `Future.timeout`은 진행 중인 http 요청을 **취소
+  /// 하지 못한다** — 기다리기를 그만둘 뿐이다. 그런데 예약까지 같이 풀어버리면,
+  /// 첫 요청이 아직 날아가고 있는 동안 다음 401이 **같은 리프레시 토큰으로 두
+  /// 번째 재발급**을 시작한다. 리프레시는 1회용(회전)이라 백엔드가 이걸 탈취로
+  /// 보고 세션을 끊는다(SafeFam_BE #56) — 빨리 포기하려다 오히려 로그아웃을
+  /// 부르는 셈이다. 그래서 예약은 실제 요청이 끝날 때까지 유지한다.
+  ///
+  /// 늦게 도착한 성공은 버려지지 않는다. 원래 요청이 끝나면 [_saveTokens]가
+  /// 새 토큰을 저장하므로, 다음 요청이 그걸 그대로 쓴다.
+  static Future<ReissueOutcome> _refreshOnce({Duration? timeout}) {
+    final pending =
+        _refreshing ??= reissue().whenComplete(() => _refreshing = null);
+    if (timeout == null) return pending;
+    return pending.timeout(timeout,
+        onTimeout: () => ReissueOutcome.unreachable);
+  }
 
   /// 보호된 요청 공통 경로.
   ///
@@ -189,9 +206,14 @@ class AuthApi {
       return request(_headers(auth: true));
     }
 
-    if (await _refreshOnce(timeout: reissueTimeout)) {
+    final outcome = await _refreshOnce(timeout: reissueTimeout);
+    if (outcome == ReissueOutcome.renewed) {
       return request(_headers(auth: true));
     }
+
+    // 서버에 물어보지 못했을 뿐이면 세션을 건드리지 않는다. 이번 요청만 실패로
+    // 두고, 다음 호출이 네트워크가 돌아왔을 때 다시 시도하게 한다(#124).
+    if (outcome == ReissueOutcome.unreachable) return res;
 
     await _clearTokens();
     if (!_sessionExpiredNotified) {
@@ -528,10 +550,15 @@ class AuthApi {
 
   /// 토큰 재발급. 저장된 refreshToken으로 POST /api/v1/auth/reissue 호출.
   /// 백엔드는 TokenResponse(accessToken·refreshToken 모두 새로 발급, 리프레시 회전)를
-  /// 반환한다. 성공 시 새 토큰을 저장하고 true, 실패 시 false.
+  /// 반환한다. 성공 시 새 토큰을 저장한다.
   ///
-  /// [timeout]은 시간 예산이 짧은 경로(문자 수신 처리)에서 줄여 쓴다.
-  static Future<bool> reissue({Duration? timeout}) async {
+  /// **서버가 거절한 것과 서버에 물어보지도 못한 것을 구분해서 돌려준다**
+  /// ([ReissueOutcome] 설명 참고). 둘을 하나로 뭉개면 네트워크가 느렸을 뿐인데
+  /// 세션이 날아간다.
+  ///
+  /// 시간 예산이 짧은 경로(문자 수신 처리)는 [_refreshOnce]의 `timeout`으로
+  /// **기다리는 시간만** 줄인다. 여기서 전송을 끊으면 안 된다(그 설명 참고).
+  static Future<ReissueOutcome> reissue() async {
     // 이 재발급이 시작된 시점의 세션 세대. 진행 중 로그아웃/탈퇴로 토큰이
     // 폐기되면 세대가 바뀌어, 완료돼도 새 세션을 저장하지 않는다.
     final generation = _sessionGeneration;
@@ -548,15 +575,19 @@ class AuthApi {
       stored = null;
     }
     stored ??= refreshToken;
-    if (stored == null || stored.isEmpty) return false;
+    // 보낼 토큰이 아예 없으면 서버가 거절한 것과 같다 — 되살릴 세션이 없다.
+    if (stored == null || stored.isEmpty) return ReissueOutcome.rejected;
     try {
       final res = await http
           .post(_uri('/api/v1/auth/reissue'),
               headers: _headers(), body: jsonEncode({'refreshToken': stored}))
-          .timeout(timeout ?? _timeout);
-      if (!_isSuccess(res) || res.body.isEmpty) return false;
+          .timeout(_timeout);
+      // 5xx는 서버가 우리 토큰을 판단한 게 아니라 서버가 아픈 것이다. 그걸로
+      // 세션을 버리면 서버 장애가 전체 로그아웃이 된다.
+      if (res.statusCode >= 500) return ReissueOutcome.unreachable;
+      if (!_isSuccess(res) || res.body.isEmpty) return ReissueOutcome.rejected;
       final data = jsonDecode(res.body)['data'];
-      if (data is! Map<String, dynamic>) return false;
+      if (data is! Map<String, dynamic>) return ReissueOutcome.rejected;
       // 계약상 reissue는 accessToken·refreshToken을 모두 새로 회전 발급한다.
       // 둘 중 하나라도 없으면 실패로 처리한다(옛 토큰으로 복구 불가능한 세션 방지).
       final nextAccess = data['accessToken'];
@@ -565,25 +596,56 @@ class AuthApi {
           nextAccess.isEmpty ||
           nextRefresh is! String ||
           nextRefresh.isEmpty) {
-        return false;
+        return ReissueOutcome.rejected;
       }
       // 재발급이 끝나기 전에 세션이 폐기됐다면(로그아웃/탈퇴) 되살리지 않는다.
-      if (generation != _sessionGeneration) return false;
+      // 이미 폐기된 상태이므로 호출부가 또 지울 필요는 없다.
+      if (generation != _sessionGeneration) return ReissueOutcome.unreachable;
       await _saveTokens(nextAccess, nextRefresh);
-      return true;
+      return ReissueOutcome.renewed;
+    } on FormatException {
+      // 응답을 해석하지 못한 것뿐이라 세션의 생사를 알 수 없다. 모르면 남긴다.
+      return ReissueOutcome.unreachable;
     } catch (_) {
-      return false;
+      // 타임아웃·연결 실패 등. **서버에 물어보지 못했다** — 토큰은 그대로 둔다.
+      return ReissueOutcome.unreachable;
     }
   }
 
   /// 세션 복구. 앱 시작 시 저장된 refreshToken을 reissue로 검증·갱신한다.
-  /// 성공하면 토큰이 메모리·저장소에 최신화되어 true, 실패하면 남은 토큰을
-  /// 폐기하고 false(→ 로그인 화면으로).
+  /// 성공하면 토큰이 메모리·저장소에 최신화되어 true.
+  ///
+  /// 실패하면 false를 돌려 로그인 화면으로 보내되, 저장된 토큰까지 버리는 건
+  /// **서버가 거절했을 때뿐**이다. 서버에 못 물어본 경우(네트워크 없음 등)엔
+  /// 토큰을 남겨, 연결이 돌아온 다음 실행에서 다시 살아날 수 있게 한다(#124).
   static Future<bool> restoreSession() async {
-    final ok = await reissue();
-    if (!ok) await _clearTokens();
-    return ok;
+    final outcome = await reissue();
+    // 서버가 거절했을 때만 저장된 토큰을 버린다. 네트워크가 안 되는 상태로 앱을
+    // 켰다고 세션을 지우면, 연결이 돌아와도 다시 로그인해야 한다(#124).
+    // 못 물어본 경우엔 이번 실행만 로그인 화면으로 보내고 토큰은 남겨둔다.
+    if (outcome == ReissueOutcome.rejected) await _clearTokens();
+    return outcome == ReissueOutcome.renewed;
   }
+}
+
+/// [AuthApi.reissue]의 결과.
+///
+/// **서버가 거절한 것**과 **서버에 물어보지 못한 것**은 전혀 다른 사건인데,
+/// 예전에는 둘 다 `false` 하나로 돌아와 호출부가 구분할 수 없었다. 그래서
+/// 네트워크가 느렸을 뿐인 순간에도 세션이 폐기됐다 — 자동 탐지는 문자 한 통에
+/// 3초 예산으로 붙으므로, **문자를 받은 것만으로 로그아웃**될 수 있었고
+/// 백그라운드 isolate가 지우는 곳이 공유 저장소라 메인 세션까지 죽었다(#124).
+enum ReissueOutcome {
+  /// 새 토큰을 받아 저장했다.
+  renewed,
+
+  /// 서버가 이 리프레시 토큰을 거절했다(만료·재사용 등). 세션이 진짜 죽었으니
+  /// 토큰을 버려도 된다.
+  rejected,
+
+  /// 서버에 물어보지 못했다(타임아웃·연결 실패·5xx). 세션의 생사를 모르므로
+  /// **토큰을 버리면 안 된다.** 이번 요청만 실패로 처리한다.
+  unreachable,
 }
 
 class AuthResult {
