@@ -324,8 +324,13 @@ class _ResultScreenState extends State<ResultScreen> {
     final partial = r.status == AnalysisStatus.partialSuccess;
     // 위험 근거 카드엔 실패 통지(ANALYSIS_TRACK_FAILURE)를 섞지 않는다. 실패한 레이어는
     // 한국어로 환원해 부분성공 배너로만 안내한다(내부 엔진명·영어 원문 노출 방지).
+    //
+    // 설명이 통째로 내부 문구인 지표도 뺀다([Indicator.isPresentable]) — 실제
+    // 분석에서 "The confident stacking model decision was used."가 이 자리에
+    // 그대로 떴다(#130).
     final riskSignals = r.indicators
-        .where((i) => i.type != IndicatorType.analysisTrackFailure)
+        .where((i) =>
+            i.type != IndicatorType.analysisTrackFailure && i.isPresentable)
         .toList(growable: false);
     final failedLayers = r.failedLayerLabels;
     return Scaffold(
@@ -462,7 +467,7 @@ class _ResultScreenState extends State<ResultScreen> {
                                       style: const TextStyle(
                                           fontSize: 14,
                                           fontWeight: FontWeight.w600)),
-                                Text(ind.description,
+                                Text(ind.displayDescription,
                                     style: const TextStyle(
                                         fontSize: 13, color: AppColors.t2)),
                               ],

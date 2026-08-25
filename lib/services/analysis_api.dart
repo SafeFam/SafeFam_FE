@@ -601,6 +601,40 @@ class Indicator {
         type: IndicatorType.fromWire(j['type'] as String?),
         description: (j['description'] as String?) ?? '',
       );
+
+  /// 화면에 쓸 설명. **[description] 대신 이걸 쓴다.**
+  ///
+  /// 서버가 내부 문구를 그대로 실어 보내는 자리다. 실제 분석에서 확인된 것:
+  ///  - `"The confident stacking model decision was used."`
+  ///    (SafeFam_AI `hybrid_analyzer.py`의 폴백 `reason`)
+  ///  - `"Matched rule: 금융기관/공공기관 명칭 언급"`
+  ///    (접두사는 **SafeFam_BE**가 붙인다 — `AnalysisResultApplyService`)
+  ///
+  /// 접두사는 벗기고, 그러고도 한글이 없으면 빈 문자열을 돌려준다
+  /// ([isPresentable]로 걸러 아예 렌더하지 않기 위해서다).
+  String get displayDescription {
+    var text = description.trim();
+    for (final prefix in _internalPrefixes) {
+      if (text.toLowerCase().startsWith(prefix.toLowerCase())) {
+        text = text.substring(prefix.length).trim();
+        break;
+      }
+    }
+    return _hasHangulText(text) ? text : '';
+  }
+
+  /// 사용자에게 내보낼 수 있는 지표인지. 설명이 통째로 내부 문구면 false.
+  bool get isPresentable => displayDescription.isNotEmpty;
+
+  /// 서버가 붙이는 내부 접두사. 뒤에 오는 내용은 한국어라 한글 판별만으로는
+  /// 걸러지지 않아, 접두사만 따로 벗겨낸다.
+  static const List<String> _internalPrefixes = [
+    'Matched rule:',
+    'Analysis track unavailable:',
+  ];
+
+  static final RegExp _hangulRe = RegExp(r'[가-힣]');
+  static bool _hasHangulText(String s) => _hangulRe.hasMatch(s);
 }
 
 /// 문자에 포함된 URL 검사 결과.
