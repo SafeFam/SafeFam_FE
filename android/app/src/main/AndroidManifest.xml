@@ -4,6 +4,10 @@
     <!-- 가족 QR 연결(mobile_scanner) 카메라 스캔에 필요 -->
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
+    <!-- 문자 자동 탐지: 수신 문자를 감지해 분석에 넘긴다.
+         another_telephony는 매니페스트에 적힌 SMS 권한만 런타임 요청하므로,
+         읽기(READ_SMS)·발신(SEND_SMS)은 쓰지 않아 일부러 적지 않는다. -->
+    <uses-permission android:name="android.permission.RECEIVE_SMS"/>
     <application
         android:label="safefam"
         android:name="${applicationName}"
@@ -35,6 +39,18 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- 문자 자동 탐지 수신기(another_telephony).
+             android:permission으로 시스템(BROADCAST_SMS 보유자)이 보낸
+             브로드캐스트만 받게 해, 다른 앱이 가짜 문자를 흘려 넣지 못하게 한다. -->
+        <receiver
+            android:name="com.shounakmulay.telephony.sms.IncomingSmsReceiver"
+            android:permission="android.permission.BROADCAST_SMS"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.provider.Telephony.SMS_RECEIVED"/>
+            </intent-filter>
+        </receiver>
 
         <!-- 카카오 앱 키 -->
         <meta-data

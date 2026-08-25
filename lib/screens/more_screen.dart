@@ -8,7 +8,9 @@ import 'login_screen.dart';
 import 'whitelist_screen.dart';
 import '../sheets.dart';
 import '../services/auth_api.dart';
+import '../services/app_prefs.dart';
 import '../services/app_settings.dart';
+import '../services/sms_listener_service.dart';
 
 /// 더보기(설정) — 홈 톱니바퀴로 진입(pushed). 하단 탭 없음.
 class MoreScreen extends StatefulWidget {
@@ -28,6 +30,10 @@ class _MoreScreenState extends State<MoreScreen> {
   bool _settingsError = false;
   bool _savingSettings = false; // PATCH 진행 중엔 토글 잠금(중복 요청 방지)
 
+  /// 문자 수신 권한 보유 여부. 자동 탐지가 켜져 있어도 이게 없으면 실제로는
+  /// 아무 문자도 들어오지 않으므로, 토글 아래에 그 사실을 알린다.
+  bool _smsPermission = false;
+
   @override
   void initState() {
     super.initState();
@@ -43,9 +49,14 @@ class _MoreScreenState extends State<MoreScreen> {
     });
     try {
       final s = await AuthApi.getSettings();
+      final granted = await SmsListenerService.hasPermission();
+      // 서버가 정본이므로, 백그라운드 수신 처리가 보는 기기 사본을 맞춰둔다.
+      await AppPrefs.setAutoAnalysisEnabled(s.autoAnalysisEnabled);
+      await SmsListenerService.start();
       if (!mounted) return;
       setState(() {
         _settings = s;
+        _smsPermission = granted;
         _settingsLoading = false;
       });
     } catch (_) {
@@ -57,6 +68,61 @@ class _MoreScreenState extends State<MoreScreen> {
     }
   }
 
+  /// 자동 탐지 토글. 켤 때는 **문자 수신 권한이 먼저**다 — 권한 없이 서버 설정만
+  /// 켜두면 토글은 켜졌는데 아무 문자도 분석되지 않는 상태가 된다.
+  ///
+  /// 끌 때는 권한을 건드리지 않는다. 수신기는 매니페스트에 등록돼 있어 계속
+  /// 불릴 수 있지만, 처리 첫 단계가 이 설정을 다시 확인하므로 문자는 서버로
+  /// 나가지 않는다([SmsListenerService.handleIncoming]).
+  Future<void> _setAutoAnalysis(bool v) async {
+    if (v) {
+      final result = await SmsListenerService.requestPermission();
+      if (!mounted) return;
+      if (result != SmsPermissionResult.granted) {
+        setState(() => _smsPermission = false);
+        if (result == SmsPermissionResult.permanentlyDenied) {
+          await _showPermissionGuide();
+        } else {
+          _toast('문자 접근을 허용해야 자동 탐지를 켤 수 있어요');
+        }
+        return; // 토글은 꺼진 채로 둔다.
+      }
+      setState(() => _smsPermission = true);
+    }
+    // 기기 사본에는 **서버가 확인해 준 값만** 적는다. PATCH가 실패했는데 켜진
+    // 것으로 적어두면, 서버 설정은 꺼져 있는데 기기는 문자를 분석에 보낸다.
+    final applied = await _updateSetting(autoAnalysisEnabled: v);
+    if (applied != null) {
+      await AppPrefs.setAutoAnalysisEnabled(applied.autoAnalysisEnabled);
+    }
+    // 켤 때든 끌 때든 부른다 — 끄는 것도 플러그인에 알려야 한다.
+    await SmsListenerService.start();
+  }
+
+  /// '다시 묻지 않음'으로 거부한 경우 — 앱 안에서는 되돌릴 수 없어 설정으로 안내한다.
+  Future<void> _showPermissionGuide() async {
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('문자 접근 권한이 필요해요',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+        content: const Text(
+            '받은 문자를 자동으로 검사하려면 문자 접근을 허용해야 해요.\n'
+            '휴대폰 설정 > 권한에서 켜주세요.',
+            style: TextStyle(fontSize: 15)),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('나중에')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('설정 열기')),
+        ],
+      ),
+    );
+    if (go == true) await SmsListenerService.openSettings();
+  }
+
   void _toast(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
@@ -65,9 +131,14 @@ class _MoreScreenState extends State<MoreScreen> {
   }
 
   /// 토글 변경 → 낙관적으로 UI 먼저 반영하고 PATCH. 실패하면 되돌리고 안내.
-  Future<void> _updateSetting({bool? autoAnalysisEnabled, bool? pushEnabled}) async {
+  ///
+  /// **서버가 확인해 준 설정**을 돌려준다(실패하면 null). 화면을 벗어난 뒤에는
+  /// `setState`를 건너뛰어 `_settings`에 낙관적 값이 남으므로, 호출부는 그 필드가
+  /// 아니라 이 반환값을 봐야 한다.
+  Future<UserSettings?> _updateSetting(
+      {bool? autoAnalysisEnabled, bool? pushEnabled}) async {
     final prev = _settings;
-    if (prev == null) return;
+    if (prev == null) return null;
     setState(() {
       _savingSettings = true;
       _settings = prev.copyWith(
@@ -79,7 +150,7 @@ class _MoreScreenState extends State<MoreScreen> {
       autoAnalysisEnabled: autoAnalysisEnabled,
       pushEnabled: pushEnabled,
     );
-    if (!mounted) return;
+    if (!mounted) return updated;
     setState(() {
       _savingSettings = false;
       if (updated != null) {
@@ -91,6 +162,7 @@ class _MoreScreenState extends State<MoreScreen> {
     if (updated == null) {
       _toast('설정을 변경하지 못했어요. 잠시 후 다시 시도해 주세요');
     }
+    return updated;
   }
 
   Widget _link(IconData icon, String label, {VoidCallback? onTap}) => InkWell(
@@ -166,11 +238,25 @@ class _MoreScreenState extends State<MoreScreen> {
           Icons.security_outlined,
           '자동 탐지',
           s.autoAnalysisEnabled,
-          _savingSettings
-              ? null
-              : (v) => _updateSetting(autoAnalysisEnabled: v),
-          sub: '문자를 자동으로 분석해 위험을 알려드려요',
+          _savingSettings ? null : _setAutoAnalysis,
+          sub: '받은 문자를 자동으로 검사해 위험을 알려드려요',
         ),
+        // 서버 설정만 켜져 있고 권한이 없으면 실제로는 동작하지 않는다.
+        // 켜진 것처럼 보이게 두지 않고 그 자리에서 바로 알린다.
+        if (s.autoAnalysisEnabled && !_smsPermission) ...[
+          const SizedBox(height: 10),
+          InkWell(
+            onTap: _showPermissionGuide,
+            child: Row(children: [
+              const Icon(Icons.error_outline, size: 18, color: AppColors.med),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text('문자 접근 권한이 꺼져 있어 검사되지 않아요. 눌러서 켜주세요',
+                    style: AppText.caption.copyWith(color: AppColors.med)),
+              ),
+            ]),
+          ),
+        ],
         const Divider(color: AppColors.line, height: 24),
         _toggle(
           Icons.notifications_none,

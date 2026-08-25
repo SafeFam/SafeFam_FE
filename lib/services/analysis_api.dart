@@ -104,12 +104,16 @@ class AnalysisApi {
   ///
   /// 백엔드는 이 엔드포인트에 유저 기준 10회/분 레이트리밋을 걸어(초과 시 429,
   /// `ANALYSIS_RATE_LIMIT_EXCEEDED`) 일반 실패와 다른 안내가 필요하다.
+  ///
+  /// [timeout]은 문자 수신 브로드캐스트처럼 시스템이 주는 시간이 짧은 경로에서
+  /// 기본값보다 줄여 쓴다.
   static Future<AnalysisRequestOutcome> analyze({
     required String content,
     required DateTime receivedAt,
     required AnalysisSource source,
     String? sender,
     String? clientMessageId,
+    Duration? timeout,
   }) async {
     try {
       final res = await AuthApi.sendAuthorized((headers) => http
@@ -125,7 +129,10 @@ class AnalysisApi {
                 'receivedAt': receivedAt.toUtc().toIso8601String(),
                 'source': source.wire,
               }))
-          .timeout(_timeout));
+          .timeout(timeout ?? _timeout),
+          // 401이 끼면 재발급 구간이 통째로 더 붙는다. 짧은 예산으로 부를 때는
+          // 그 구간도 같이 줄여야 예산 안에서 끝난다.
+          reissueTimeout: timeout);
       // 429: 분석 요청 한도 초과. 서버 안내 문구를 그대로 노출(단일 출처).
       if (res.statusCode == 429) {
         return AnalysisRequestOutcome.failure(
