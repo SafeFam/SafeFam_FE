@@ -5,6 +5,8 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 
+import 'app_prefs.dart';
+
 /// 인증 관련 서버 통신 담당.
 ///
 /// 백엔드(SafeFam_BE) 확인된 계약 (휴대폰 기반 확정, 2026-07-17 #26):
@@ -87,6 +89,16 @@ class AuthApi {
     refreshToken = null;
     await _storage.delete(key: _kAccess);
     await _storage.delete(key: _kRefresh);
+    // 자동 탐지 기기 사본도 같이 끈다. 이 값은 계정별이 아니라 기기당 하나라,
+    // 남겨두면 **다음에 로그인한 사람이 물려받는다** — 켠 적도 없는 사용자의
+    // 문자가 그 사람 계정으로 분석 접수되는 셈이다(#122).
+    //
+    // 계정별 키로 나누는 대신 세션이 끝날 때 끄는 쪽을 골랐다. 백그라운드
+    // 수신 처리는 사용자 id를 모르는 상태로 시작하고, 그걸 알아내려면 문자
+    // 한 통마다 서버 왕복이 하나 더 붙는다 — 브로드캐스트에 주어진 시간
+    // 안에서 감당할 수 없다. 끄는 쪽은 틀려도 분석을 안 하는 방향이라 안전하다.
+    // 다음 로그인 사용자의 진짜 설정은 더보기 화면이 서버에서 받아 되살린다.
+    await AppPrefs.setAutoAnalysisEnabled(false);
   }
 
   /// 저장소의 토큰을 메모리 캐시로 올리기만 한다(재발급 없음).
