@@ -111,6 +111,7 @@ test/services/analysis_status_test.dart  분석 상태 파싱 회귀 테스트(�
 - ✅ 고령층 접근성 실동작 완료 — '글씨 더 크게'(앱 전체 `MediaQuery.textScaler`)·'음성으로 읽어주기'/'다시 들려주기'(TTS, `flutter_tts`) 실제 동작, `AppSettings`로 기기 저장 (이슈 #78)
 - ✅ 분석 결과 공유 — `share_plus`로 결과 요약 공유(원문·개인정보 제외), 결과 화면 공유 시트
 - ✅ 위험 근거 카드(`evidenceCards`) 연동 완료 — 결과 화면 '이렇게 판단했어요'에 서버가 사용자 언어로 정리해 보낸 근거를 그대로 렌더(기관 사칭·개인정보 요구·위험 URL·행동 압박·AI 판단). ★`AI_JUDGMENT` 카드엔 AI 분석기의 내부 영어 문구가 실려 오는 일이 있어(`hybrid_analyzer.py`, AI 쪽 미수정) **한글이 없는 설명은 노출하지 않는다** (이슈 #126)
+- ✅ 위험 신호 목록(`indicators`)의 영어 문구도 차단 — 내부 접두사(`Matched rule: `, Spring이 붙임)를 벗기고 한글 없는 설명은 제외(`Indicator.displayDescription`). **로컬 풀스택으로 실제 분석을 돌려 발견** — 목 서버로는 잡히지 않던 버그다 (이슈 #130)
 - ✅ AI 영어 내부 문구 차단 완료 — 증거 카드는 숨기고(`EvidenceCard.isPresentable`), 결과 설명은 한국어 안내로 대체(`AnalysisResult.displayExplanation`). 설명은 **TTS로도 읽히던** 자리라 한국어 음성 엔진이 영어를 읽고 있었다 (이슈 #128)
 - ✅ 재발급 실패와 네트워크 장애 구분 완료 — `reissue()`가 타임아웃까지 `false` 하나로 뭉개 세션을 폐기해, 토큰이 만료된 상태에서 **문자 한 통에 로그아웃**되던 문제. 이제 서버가 거절했을 때만 토큰을 버린다(`ReissueOutcome`). single-flight 예약도 실제 요청이 끝날 때까지 유지해, 같은 토큰으로 두 번째 재발급이 나가지 않는다 (이슈 #124)
 - ✅ 자동 탐지 설정이 세션 밖으로 새지 않게 정리 — 자동 탐지 기기 사본은 **계정별이 아니라 기기당 하나**라 로그아웃해도 남아 다음 로그인 사용자가 물려받았다(켠 적 없는 사람의 문자가 그 사람 계정으로 접수됨). 세션이 끝날 때 사본을 끄고, 로그인·자동 로그인 직후 서버 설정으로 되살린다(`SmsListenerService.syncFromServer`). 권한 설정에서 돌아올 때 권한을 다시 읽도록 보강 (이슈 #122)
@@ -122,7 +123,8 @@ test/services/analysis_status_test.dart  분석 상태 파싱 회귀 테스트(�
 
 ### 남은 작업
 - **백엔드 준비됨 · 미연동** — 없음. 컨트롤러 10개 전수 대조 기준으로 응답 필드까지 전부 소진했다(마지막 미사용 필드였던 `evidenceCards`도 연동 완료 — 이슈 #126).
-- **검증 범위** — 이번 작업분은 **로컬 목 서버 + 에뮬레이터/브라우저**로 확인했다. 무엇이 검증됐고 무엇이 아닌지는 `docs/mock-verification-log.md`에 정리했다(재현 방법 포함).
+- **검증 범위** — 목 서버 + 에뮬레이터/브라우저로 확인한 범위는 `docs/mock-verification-log.md`, **로컬 풀스택(Spring+FastAPI+RabbitMQ+PostgreSQL+Redis)으로 실제 분석까지 돌린 결과**와 출품 보고서 대조는 `docs/report-vs-reality.md`에 있다.
+- ⚠️ **BE 통계 API가 특정 기간에서 터진다** — `GET /statistics/overview?period=LAST_7_DAYS|LAST_30_DAYS`가 NPE로 실패하고 401 '인증이 필요합니다'로 뭉개져 나온다(`period=ALL`만 정상). **앱 기본값이 30일이라 이력 화면 통계가 항상 깨진다.** 프론트가 아니라 BE 수정 사항.
 - **온디바이스/실기기 필요** — 최근 머지분 E2E 검증(배포 서버 연결·가족 관계 저장·초대 코드 입력·챗봇) · 가족 QR 실기기 카메라 검증 · TTS 실제 음성 출력 검증 · 자동 탐지의 **실기기 Doze/절전 환경** 확인(에뮬레이터 수신 E2E는 통과 — 아래)
 - ⚠️ **`flutter test` 실행 불가(환경)** — Dart VM의 FFI 변환기가 크래시해(`ffi/use_sites.dart`) 테스트 스위트 로딩이 실패한다. 한글 경로와 무관하며 **앱 빌드·실행은 정상**. `test/services/analysis_status_test.dart`가 그동안 돌지 못한 상태다.
 - **범위 제외** — 강제 오버레이 경고(`SYSTEM_ALERT_WINDOW`). 팀 착수 합의가 없어 계획에서 뺐다(2026-08-10). 관련 코드·화면은 남아 있지 않다.
