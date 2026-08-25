@@ -31,6 +31,8 @@ migrate_working_dir/
 .pub-cache/
 .pub/
 /build/
+# Gradle이 android/ 아래에도 리포트를 떨군다(/build/ 패턴엔 안 걸림).
+android/build/
 /coverage/
 
 # Symbolication related

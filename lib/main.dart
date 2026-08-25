@@ -9,6 +9,7 @@ import 'services/app_prefs.dart';
 import 'services/app_settings.dart';
 import 'services/auth_api.dart';
 import 'services/device_api.dart';
+import 'services/sms_listener_service.dart';
 import 'widgets/main_scaffold.dart';
 import 'screens/auth.dart';
 import 'screens/login_screen.dart';
@@ -51,6 +52,11 @@ void main() async {
 
   // 접근성 설정(큰 글씨·음성)을 미리 복구해 첫 프레임부터 반영되게 한다.
   await AppSettings.instance.load();
+
+  // 문자 수신 감시 상태를 설정에 맞춘다. **로그인 여부와 무관하게** 앱을 켤
+  // 때마다 해야 한다 — 감시를 꺼둔 상태도 플러그인에 알려주지 않으면, 매니페스트
+  // 수신기가 문자를 받을 때 앱이 죽는다(SmsListenerService.start 설명 참고).
+  await SmsListenerService.start();
 
   runApp(const SafeFamApp());
 }

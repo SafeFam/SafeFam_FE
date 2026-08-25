@@ -89,6 +89,27 @@ class AuthApi {
     await _storage.delete(key: _kRefresh);
   }
 
+  /// 저장소의 토큰을 메모리 캐시로 올리기만 한다(재발급 없음).
+  ///
+  /// 문자 자동 탐지의 백그라운드 isolate는 메인 isolate와 static을 공유하지 않아
+  /// [accessToken]이 비어 있는 채로 시작한다. 그렇다고 [restoreSession]을 쓰면
+  /// refreshToken이 **1회용(회전)**이라 메인 isolate가 들고 있는 토큰이 죽는다
+  /// (SafeFam_BE #56 — 재사용을 탈취로 간주). 그래서 여기서는 읽기만 하고,
+  /// 액세스 토큰이 이미 만료됐을 때만 [sendAuthorized]의 401 경로가 한 번
+  /// 재발급하도록 맡긴다.
+  ///
+  /// 쓸 만한 세션이 없으면 false.
+  static Future<bool> loadStoredTokens() async {
+    try {
+      accessToken = await _storage.read(key: _kAccess);
+      refreshToken = await _storage.read(key: _kRefresh);
+    } catch (_) {
+      return false;
+    }
+    return (accessToken?.isNotEmpty ?? false) &&
+        (refreshToken?.isNotEmpty ?? false);
+  }
+
   static Map<String, String> _headers({bool auth = false}) {
     final h = {'Content-Type': 'application/json'};
     if (auth && accessToken != null) {
@@ -122,9 +143,10 @@ class AuthApi {
   /// 새 토큰을 저장하지 않는다(로그아웃이 재발급에 되돌려지는 것을 막는다).
   static int _sessionGeneration = 0;
 
-  /// 재발급을 single-flight으로 실행한다. 이미 진행 중이면 그 결과를 기다린다.
-  static Future<bool> _refreshOnce() =>
-      _refreshing ??= reissue().whenComplete(() => _refreshing = null);
+  /// 재발급을 single-flight으로 실행한다. 이미 진행 중이면 그 결과를 기다린다
+  /// (그 경우 [timeout]은 먼저 시작한 쪽의 값을 따른다).
+  static Future<bool> _refreshOnce({Duration? timeout}) => _refreshing ??=
+      reissue(timeout: timeout).whenComplete(() => _refreshing = null);
 
   /// 보호된 요청 공통 경로.
   ///
@@ -134,9 +156,17 @@ class AuthApi {
   /// 401이면 토큰을 재발급하고 같은 요청을 한 번만 재시도한다. 재발급이
   /// 실패하면 세션을 폐기하고 [onSessionExpired]로 알린 뒤, 호출부가 기존
   /// 실패 경로를 타도록 마지막 401 응답을 그대로 돌려준다.
+  ///
+  /// 한 번의 호출이 **최초 요청 + 재발급 + 재시도** 세 구간으로 늘어날 수 있다.
+  /// 문자 수신 브로드캐스트처럼 시스템이 주는 시간이 짧은 경로는 자기 요청만
+  /// 짧게 잡아선 부족하고, 가운데 재발급도 함께 줄여야 예산 안에 들어온다.
+  /// 그래서 [reissueTimeout]으로 그 구간을 좁힐 수 있게 열어둔다.
+  /// (`Future.timeout`은 진행 중인 요청을 취소하지 못한다 — 기다리기를 그만둘 뿐이라,
+  ///  프로세스가 회수되기 전에 **다음 단계를 시작하지 않는 것**이 목적이다.)
   static Future<http.Response> sendAuthorized(
-    Future<http.Response> Function(Map<String, String> headers) request,
-  ) async {
+    Future<http.Response> Function(Map<String, String> headers) request, {
+    Duration? reissueTimeout,
+  }) async {
     final sentToken = accessToken;
     final res = await request(_headers(auth: true));
     if (res.statusCode != 401) return res;
@@ -147,7 +177,9 @@ class AuthApi {
       return request(_headers(auth: true));
     }
 
-    if (await _refreshOnce()) return request(_headers(auth: true));
+    if (await _refreshOnce(timeout: reissueTimeout)) {
+      return request(_headers(auth: true));
+    }
 
     await _clearTokens();
     if (!_sessionExpiredNotified) {
@@ -485,17 +517,31 @@ class AuthApi {
   /// 토큰 재발급. 저장된 refreshToken으로 POST /api/v1/auth/reissue 호출.
   /// 백엔드는 TokenResponse(accessToken·refreshToken 모두 새로 발급, 리프레시 회전)를
   /// 반환한다. 성공 시 새 토큰을 저장하고 true, 실패 시 false.
-  static Future<bool> reissue() async {
+  ///
+  /// [timeout]은 시간 예산이 짧은 경로(문자 수신 처리)에서 줄여 쓴다.
+  static Future<bool> reissue({Duration? timeout}) async {
     // 이 재발급이 시작된 시점의 세션 세대. 진행 중 로그아웃/탈퇴로 토큰이
     // 폐기되면 세대가 바뀌어, 완료돼도 새 세션을 저장하지 않는다.
     final generation = _sessionGeneration;
-    final stored = refreshToken ?? await _storage.read(key: _kRefresh);
+    // **저장소를 먼저 읽는다.** 메모리 캐시는 이 isolate 것이라, 문자 자동 탐지의
+    // 백그라운드 isolate가 토큰을 회전시켜도 메인 isolate에는 옛 값이 남는다.
+    // 그 옛 값을 보내면 백엔드가 재사용을 탈취로 보고 세션을 끊는다
+    // (SafeFam_BE #56) — 문자 한 통 받았다고 로그아웃되는 셈이다.
+    // 저장소는 항상 메모리와 같거나 더 새것이므로(_saveTokens가 둘 다 쓴다)
+    // 저장소 우선이 손해 볼 일은 없다. 못 읽을 때만 메모리로 되돌아간다.
+    String? stored;
+    try {
+      stored = await _storage.read(key: _kRefresh);
+    } catch (_) {
+      stored = null;
+    }
+    stored ??= refreshToken;
     if (stored == null || stored.isEmpty) return false;
     try {
       final res = await http
           .post(_uri('/api/v1/auth/reissue'),
               headers: _headers(), body: jsonEncode({'refreshToken': stored}))
-          .timeout(_timeout);
+          .timeout(timeout ?? _timeout);
       if (!_isSuccess(res) || res.body.isEmpty) return false;
       final data = jsonDecode(res.body)['data'];
       if (data is! Map<String, dynamic>) return false;

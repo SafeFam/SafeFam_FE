@@ -96,6 +96,32 @@ class AppPrefs {
     } catch (_) {}
   }
 
+  // ── 자동 탐지 토글의 기기 로컬 사본 ──
+  static const String _kAutoAnalysis = 'autoAnalysisEnabled';
+
+  /// 자동 탐지 사용 여부. **정본은 서버(`users/me/settings`)**이고 이건 사본이다.
+  ///
+  /// 문자 수신 브로드캐스트는 처리 시간이 ~10초로 제한돼, 문자 한 통마다 설정을
+  /// 서버에 물어볼 여유가 없다(꺼져 있는 사용자에게까지 매번 왕복이 생긴다).
+  /// 그래서 더보기 화면에서 토글이 서버에 반영될 때마다 여기에 같이 적어두고,
+  /// 수신 처리는 이 값만 읽는다.
+  ///
+  /// 기본값은 **off** — 못 읽었을 때 켜진 것으로 오해해 문자를 서버로 보내면
+  /// 안 되기 때문이다.
+  static Future<bool> autoAnalysisEnabled() async {
+    try {
+      return await _storage.read(key: _kAutoAnalysis) == 'true';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<void> setAutoAnalysisEnabled(bool v) async {
+    try {
+      await _storage.write(key: _kAutoAnalysis, value: '$v');
+    } catch (_) {}
+  }
+
   // ── 접근성 설정(큰 글씨·음성 안내). 기기 로컬에만 둔다. ──
   static const String _kBigText = 'bigText';
   static const String _kVoiceEnabled = 'voiceEnabled';
