@@ -117,7 +117,7 @@ class _ListenButtonState extends State<_ListenButton> {
 /// 결과를 음성으로 읽어줄 때 쓰는 문장(제목 + 설명).
 String _spokenResult(AnalysisResult r, RiskLevel level) {
   final b = StringBuffer(_resultTitle(r, level));
-  final ex = r.explanation.trim();
+  final ex = r.displayExplanation.trim();
   if (ex.isNotEmpty) b.write('. $ex');
   return b.toString();
 }
@@ -351,13 +351,13 @@ class _ResultScreenState extends State<ResultScreen> {
           // 3중 스코어 게이지
           Center(child: ScoreGauge(score, level)),
           const SizedBox(height: 8),
-          if (r.explanation.isNotEmpty) ...[
+          if (r.displayExplanation.isNotEmpty) ...[
             SfCard(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const SectionLabel('왜 이렇게 판단했나요?'),
-                  Text(r.explanation, style: AppText.body),
+                  Text(r.displayExplanation, style: AppText.body),
                 ],
               ),
             ),
